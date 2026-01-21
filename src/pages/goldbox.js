@@ -114,7 +114,7 @@ async function scrapeGoldbox(page, specificCategory = null) {
     console.log("\n" + "=".repeat(60));
     console.log(`🎯 CATEGORIA SELECIONADA: ${category.name.toUpperCase()}`);
     console.log("=".repeat(60));
-    console.log(`📍 URL: ${category.url}\n`);
+    console.log(`🔗 URL: ${category.url}\n`);
     
     await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36');
     await page.goto(category.url, { waitUntil: 'networkidle2', timeout: 60000 });
@@ -141,11 +141,31 @@ async function scrapeGoldbox(page, specificCategory = null) {
                 const oldPriceEl = card.querySelector('[data-a-strike="true"], .ProductCard-module__wrapPrice__sMO92NjAjHmGPn3jnIH .a-text-price');
                 const linkEl = card.querySelector('a[data-testid="product-card-link"], a[href*="/dp/"]');
                 const primeEl = card.querySelector('.a-icon-prime, [aria-label*="Prime"]');
+                
+                // 🖼️ CAPTURAR IMAGEM DO PRODUTO
+                const imageEl = card.querySelector('img.a-amazon-image, img[class*="ProductCardImage"]');
+                let imageUrl = null;
+                
+                if (imageEl) {
+                    // Priorizar src, depois srcset, depois data-src
+                    imageUrl = imageEl.src || 
+                               imageEl.getAttribute('data-src') || 
+                               imageEl.srcset?.split(',')[0]?.trim()?.split(' ')[0];
+                    
+                    // Limpar parâmetros de qualidade para obter melhor resolução
+                    if (imageUrl) {
+                        // Trocar dimensões pequenas por maiores
+                        imageUrl = imageUrl
+                            .replace(/SF\d+,\d+/g, 'SF500,500')  // Aumentar dimensão
+                            .replace(/QL\d+/g, 'QL85');          // Qualidade 85%
+                    }
+                }
 
                 if (titleEl && linkEl) {
                     let priceText = "";
                     if (priceEl) {
-                        priceText = priceEl.innerText + (fractionEl ? ',' + fractionEl.innerText : '');
+                        const wholePrice = priceEl.innerText.replace(',', ''); // Remove vírgula do inteiro
+                        priceText = wholePrice + (fractionEl ? ',' + fractionEl.innerText : ',00');
                     } else {
                         const match = card.innerText.match(/R\$\s?(\d+[\.,]\d{2})/);
                         if (match) priceText = match[1].replace('.', ',');
@@ -161,7 +181,8 @@ async function scrapeGoldbox(page, specificCategory = null) {
                             priceStr: priceText,
                             oldPriceStr: oldPriceEl ? oldPriceEl.innerText.trim() : null,
                             link: linkEl.href,
-                            prime: !!primeEl
+                            prime: !!primeEl,
+                            imageUrl: imageUrl  // ✅ ADICIONAR URL DA IMAGEM
                         });
                     }
                 }
@@ -198,7 +219,8 @@ async function scrapeGoldbox(page, specificCategory = null) {
             asin,
             link: finalLink,
             prime: p.prime,
-            category: category.name  // ✅ Adicionar categoria ao produto
+            category: category.name,
+            imageUrl: p.imageUrl  // ✅ INCLUIR URL DA IMAGEM NO OBJETO FINAL
         };
     });
 
@@ -336,6 +358,7 @@ async function validateProductsIntelligent(browserPage, products) {
         console.log(`   ${product.title.substring(0, 60)}...`);
         console.log(`   Preço: R$ ${product.price.toFixed(2)} | Desconto: ${product.discount}%`);
         console.log(`   🔗 Link: ${product.link}`);
+        console.log(`   🖼️ Imagem: ${product.imageUrl ? 'Capturada ✓' : 'Não encontrada'}`);
         
         let productPage;
         
@@ -380,7 +403,7 @@ async function validateProductsIntelligent(browserPage, products) {
     }
     
     console.log(`\n✅ Validação concluída: ${validProducts.length} produtos disponíveis`);
-    console.log(`📋 Todos os produtos retornados já possuem links de afiliado aplicados`);
+    console.log(`📋 Todos os produtos retornados já possuem links de afiliado e imagens`);
     return validProducts;
 }
 
