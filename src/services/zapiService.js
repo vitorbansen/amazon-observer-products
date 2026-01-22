@@ -1,5 +1,5 @@
 // ========================================
-// 📱 SERVIÇO Z-API - VERSÃO COM DEBUG COMPLETO
+// 📱 SERVIÇO Z-API - VERSÃO ANTI-BLOQUEIO
 // ========================================
 
 const axios = require('axios');
@@ -64,13 +64,12 @@ class ZApiService {
                 payload,
                 { 
                     headers: this.headers,
-                    timeout: 30000 // 30 segundos
+                    timeout: 30000
                 }
             );
             
             this.log('\n✅ Resposta da API:', response.data);
 
-            // Verificar se houve erro na resposta
             if (response.data.error) {
                 console.error('❌ API retornou erro:', response.data);
                 throw new Error(`Z-API Error: ${JSON.stringify(response.data)}`);
@@ -91,14 +90,12 @@ class ZApiService {
                 console.error('Status:', error.response.status);
                 console.error('Data:', error.response.data);
                 
-                // Erros específicos
                 if (error.response.status === 401) {
                     console.error('\n🔑 Erro de autenticação!');
                     console.error('   - Verifique ZAPI_INSTANCE_ID e ZAPI_TOKEN no .env');
                 } else if (error.response.status === 403) {
                     console.error('\n🚫 Acesso negado!');
                     console.error('   - Client-Token pode estar inválido ou expirado');
-                    console.error('   - Tente remover ZAPI_CLIENT_TOKEN do .env');
                 } else if (error.response.status === 404) {
                     console.error('\n❌ Grupo não encontrado!');
                     console.error(`   - Verifique se o ID ${groupId} está correto`);
@@ -219,48 +216,146 @@ class ZApiService {
 }
 
 // ========================================
-// 📦 FORMATADOR DE MENSAGENS
+// 🛡️ ANTI-BLOQUEIO - COMPORTAMENTO HUMANO
+// ========================================
+
+class AntiBanHelper {
+    
+    // Gera delay aleatório entre min e max segundos
+    static getRandomDelay(minSeconds = 60, maxSeconds = 120) {
+        const delayMs = (minSeconds + Math.random() * (maxSeconds - minSeconds)) * 1000;
+        return Math.floor(delayMs);
+    }
+    
+    // Varia emojis para não parecer automático
+    static getRandomEmojis() {
+        const emojiSets = [
+            { fire: '🔥', money: '💰', gift: '🎁', cart: '🛒' },
+            { fire: '⚡', money: '💵', gift: '🎉', cart: '🛍️' },
+            { fire: '💥', money: '💸', gift: '🎊', cart: '🛍️' },
+            { fire: '✨', money: '💰', gift: '🎈', cart: '🛒' },
+            { fire: '🌟', money: '💲', gift: '🎁', cart: '🛍️' }
+        ];
+        return emojiSets[Math.floor(Math.random() * emojiSets.length)];
+    }
+    
+    // Varia frases de call-to-action
+    static getRandomCTA() {
+        const ctas = [
+            '🛍️ *COMPRE AQUI:*',
+            '🔗 *LINK DA OFERTA:*',
+            '👉 *APROVEITE AGORA:*',
+            '🎯 *GARANTIR OFERTA:*',
+            '✨ *VER PRODUTO:*',
+            '💎 *CONFIRA AQUI:*'
+        ];
+        return ctas[Math.floor(Math.random() * ctas.length)];
+    }
+    
+    // Varia introduções
+    static getRandomIntro() {
+        const intros = [
+            'TOP OFERTA',
+            'IMPERDÍVEL',
+            'SUPER DESCONTO',
+            'OFERTA RELÂMPAGO',
+            'PROMOÇÃO',
+            'OPORTUNIDADE'
+        ];
+        return intros[Math.floor(Math.random() * intros.length)];
+    }
+    
+    // Embaralha array (Fisher-Yates)
+    static shuffleArray(array) {
+        const shuffled = [...array];
+        for (let i = shuffled.length - 1; i > 0; i--) {
+            const j = Math.floor(Math.random() * (i + 1));
+            [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
+        }
+        return shuffled;
+    }
+}
+
+// ========================================
+// 📦 FORMATADOR DE MENSAGENS - VERSÃO HUMANIZADA
 // ========================================
 
 class ProductMessageFormatter {
     
     static formatProduct(product) {
-        // Resumir título de forma inteligente
+        const emojis = AntiBanHelper.getRandomEmojis();
+        const cta = AntiBanHelper.getRandomCTA();
+        const intro = AntiBanHelper.getRandomIntro();
+        
         let cleanTitle = this.cleanText(product.title);
         
-        // Remover tudo após espaços duplos ou quebras
         const doubleSpaceIndex = cleanTitle.indexOf('  ');
         if (doubleSpaceIndex > 0) {
             cleanTitle = cleanTitle.substring(0, doubleSpaceIndex);
         }
         
-        // Resumir título mantendo as informações essenciais
         cleanTitle = this.summarizeTitle(cleanTitle);
         
-        let msg = `*${cleanTitle}*\n\n`;
+        // Variar estrutura da mensagem
+        const templates = [
+            // Template 1 - Clássico
+            () => {
+                let msg = `${emojis.fire} *${intro}*\n\n`;
+                msg += `*${cleanTitle}*\n\n`;
+                if (product.oldPrice) {
+                    msg += `De: R$ ${product.oldPrice.toFixed(2)}\n`;
+                }
+                msg += `${emojis.money} *Por: R$ ${product.price.toFixed(2)}*\n`;
+                if (product.discount) {
+                    msg += `${emojis.gift} Desconto: *${product.discount}% OFF*\n`;
+                }
+                if (product.prime) {
+                    msg += `⚡ Prime disponível\n`;
+                }
+                msg += `\n${cta}\n${product.link}`;
+                return msg;
+            },
+            
+            // Template 2 - Compacto
+            () => {
+                let msg = `*${cleanTitle}*\n\n`;
+                if (product.oldPrice) {
+                    msg += `~R$ ${product.oldPrice.toFixed(2)}~ `;
+                }
+                msg += `${emojis.money} *R$ ${product.price.toFixed(2)}*`;
+                if (product.discount) {
+                    msg += ` (${product.discount}% off)`;
+                }
+                msg += `\n`;
+                if (product.prime) {
+                    msg += `Prime ${emojis.fire}\n`;
+                }
+                msg += `\n${cta}\n${product.link}`;
+                return msg;
+            },
+            
+            // Template 3 - Com destaque no desconto
+            () => {
+                let msg = `${emojis.gift} *${product.discount}% OFF*\n\n`;
+                msg += `*${cleanTitle}*\n\n`;
+                if (product.oldPrice) {
+                    msg += `${emojis.money} De R$ ${product.oldPrice.toFixed(2)} por *R$ ${product.price.toFixed(2)}*\n`;
+                } else {
+                    msg += `${emojis.money} *R$ ${product.price.toFixed(2)}*\n`;
+                }
+                if (product.prime) {
+                    msg += `⚡ Frete grátis Prime\n`;
+                }
+                msg += `\n${cta}\n${product.link}`;
+                return msg;
+            }
+        ];
         
-        if (product.oldPrice) {
-            msg += `💸 ~De: R$ ${product.oldPrice.toFixed(2)}~\n`;
-        }
-        
-        msg += `💰 *Por: R$ ${product.price.toFixed(2)}*\n`;
-        
-        if (product.discount) {
-            msg += `🎁 Desconto: *${product.discount}% OFF*\n`;
-        }
-        
-        if (product.prime) {
-            msg += `⚡ Prime disponível\n`;
-        }
-        
-        msg += `\n🛍️ *COMPRE AQUI:*\n${product.link}`;
-        
-        return msg;
+        const randomTemplate = templates[Math.floor(Math.random() * templates.length)];
+        return randomTemplate();
     }
     
-    // Nova função para resumir títulos de forma inteligente
     static summarizeTitle(title) {
-        // Remove palavras repetidas consecutivas
         const words = title.split(' ');
         const uniqueWords = [];
         let lastWord = '';
@@ -274,7 +369,6 @@ class ProductMessageFormatter {
         
         let result = uniqueWords.join(' ');
         
-        // Remove informações redundantes comuns
         const redundantPatterns = [
             /\s*-\s*Edicao.*/i,
             /\s*\(Embalagem pode variar\)/i,
@@ -289,7 +383,6 @@ class ProductMessageFormatter {
             result = result.replace(pattern, '');
         }
         
-        // Limitar a 70 caracteres em uma quebra natural (palavra completa)
         if (result.length > 70) {
             result = result.substring(0, 70);
             const lastSpace = result.lastIndexOf(' ');
@@ -302,7 +395,8 @@ class ProductMessageFormatter {
     }
 
     static formatProductList(products, maxProducts = 5) {
-        let msg = `TOP ${maxProducts} OFERTAS DO DIA\n\n`;
+        const emojis = AntiBanHelper.getRandomEmojis();
+        let msg = `${emojis.fire} TOP ${maxProducts} OFERTAS\n\n`;
         
         const topProducts = products.slice(0, maxProducts);
         
@@ -322,7 +416,7 @@ class ProductMessageFormatter {
             msg += `\n   ${product.link}\n\n`;
         });
         
-        msg += `Ofertas por tempo limitado!`;
+        msg += `${emojis.gift} Ofertas por tempo limitado!`;
         
         return msg;
     }
@@ -332,31 +426,30 @@ class ProductMessageFormatter {
         const avgDiscount = products.reduce((sum, p) => sum + (p.discount || 0), 0) / totalProducts;
         const primeCount = products.filter(p => p.prime).length;
         
-        let msg = `RESUMO DA BUSCA\n\n`;
+        let msg = `📊 RESUMO DA BUSCA\n\n`;
         
         if (category) {
             msg += `Categoria: ${category}\n`;
         }
         
-        msg += `${totalProducts} ofertas encontradas\n`;
-        msg += `Desconto medio: ${avgDiscount.toFixed(0)}%\n`;
-        msg += `Prime: ${primeCount} produtos\n\n`;
+        msg += `✓ ${totalProducts} ofertas encontradas\n`;
+        msg += `✓ Desconto médio: ${avgDiscount.toFixed(0)}%\n`;
+        msg += `✓ Prime: ${primeCount} produtos\n\n`;
         msg += `Enviando melhores ofertas...`;
         
         return msg;
     }
 
-    // Limpar texto de caracteres problemáticos
     static cleanText(text) {
         return text
-            .replace(/[^\x00-\x7F]/g, '') // Remove caracteres não-ASCII
-            .replace(/\s+/g, ' ')          // Normaliza espaços
+            .replace(/[^\x00-\x7F]/g, '')
+            .replace(/\s+/g, ' ')
             .trim();
     }
 }
 
 // ========================================
-// 🤖 BOT PRINCIPAL
+// 🤖 BOT PRINCIPAL - VERSÃO ANTI-BAN
 // ========================================
 
 class AmazonDealsBot {
@@ -370,6 +463,10 @@ class AmazonDealsBot {
         
         console.log(`✅ Bot configurado para o grupo: ${this.groupId}`);
         this.debugMode = process.env.DEBUG === 'true';
+        
+        // Histórico de links enviados (anti-spam)
+        this.sentLinks = new Set();
+        this.lastSentTime = null;
     }
 
     log(message) {
@@ -380,7 +477,7 @@ class AmazonDealsBot {
 
     async sendDealsToGroup(products) {
         console.log('\n' + '='.repeat(60));
-        console.log('🎯 ENVIANDO OFERTAS PARA O WHATSAPP');
+        console.log('🎯 ENVIANDO OFERTAS COM PROTEÇÃO ANTI-BAN');
         console.log('='.repeat(60));
 
         try {
@@ -393,9 +490,19 @@ class AmazonDealsBot {
             }
             console.log('✅ WhatsApp conectado!');
 
-            // 2. Enviar produtos (top 5) com imagem
-            const topProducts = products.slice(0, 5);
-            console.log(`\n2️⃣ Enviando ${topProducts.length} produtos...`);
+            // 2. Filtrar produtos já enviados
+            const newProducts = products.filter(p => !this.sentLinks.has(p.link));
+            
+            if (newProducts.length === 0) {
+                console.log('⚠️ Todos os produtos já foram enviados anteriormente');
+                return;
+            }
+
+            // 3. Embaralhar produtos para não seguir sempre a mesma ordem
+            const shuffledProducts = AntiBanHelper.shuffleArray(newProducts);
+            const topProducts = shuffledProducts.slice(0, 5);
+            
+            console.log(`\n2️⃣ Enviando ${topProducts.length} produtos (ordem aleatória)...`);
             
             for (let i = 0; i < topProducts.length; i++) {
                 const product = topProducts[i];
@@ -404,27 +511,37 @@ class AmazonDealsBot {
                 console.log(`   ${product.title.substring(0, 50)}...`);
                 console.log(`   🖼️ Imagem: ${product.imageUrl ? 'Disponível ✓' : 'Não encontrada'}`);
                 
-                // ✅ ENVIAR IMAGEM SE DISPONÍVEL (usando imageUrl do goldbox.js)
+                // Enviar com imagem ou texto
                 if (product.imageUrl) {
                     const caption = ProductMessageFormatter.formatProduct(product);
                     await this.zapi.sendImage(this.groupId, product.imageUrl, caption);
-                    console.log(`✅ Enviado com imagem!`);
+                    console.log(`✅ Enviado com imagem (template randomizado)!`);
                 } else {
-                    // Enviar apenas texto se não houver imagem
                     const message = ProductMessageFormatter.formatProduct(product);
                     await this.zapi.sendToGroup(this.groupId, message);
-                    console.log(`✅ Enviado sem imagem!`);
+                    console.log(`✅ Enviado sem imagem (template randomizado)!`);
                 }
                 
+                // Marcar link como enviado
+                this.sentLinks.add(product.link);
+                
+                // Delay variável entre produtos
                 if (i < topProducts.length - 1) {
-                    // Delay de 1 minuto entre cada produto
-                    console.log('⏳ Aguardando 1 minuto para evitar bloqueios...');
-                    await this.sleep(60000); // 60 segundos
+                    const delay = AntiBanHelper.getRandomDelay(60, 120);
+                    const delaySeconds = Math.floor(delay / 1000);
+                    console.log(`⏳ Aguardando ${delaySeconds}s (delay aleatório)...`);
+                    await this.sleep(delay);
                 }
             }
 
             console.log('\n' + '='.repeat(60));
-            console.log(`✅ ${topProducts.length} ofertas enviadas com sucesso!`);
+            console.log(`✅ ${topProducts.length} ofertas enviadas com proteção anti-ban!`);
+            console.log('🛡️ Recursos ativados:');
+            console.log('   ✓ Delays aleatórios (60-120s)');
+            console.log('   ✓ Templates de mensagem variados');
+            console.log('   ✓ Emojis randomizados');
+            console.log('   ✓ Ordem de envio embaralhada');
+            console.log('   ✓ Filtro de links duplicados');
             console.log('='.repeat(60) + '\n');
             
         } catch (error) {
@@ -482,6 +599,12 @@ class AmazonDealsBot {
     sleep(ms) {
         return new Promise(resolve => setTimeout(resolve, ms));
     }
+    
+    // Limpar histórico de links (rodar 1x por dia)
+    clearSentLinks() {
+        this.sentLinks.clear();
+        console.log('🗑️ Histórico de links enviados limpo');
+    }
 }
 
 // ========================================
@@ -491,5 +614,6 @@ class AmazonDealsBot {
 module.exports = {
     ZApiService,
     ProductMessageFormatter,
-    AmazonDealsBot
+    AmazonDealsBot,
+    AntiBanHelper
 };
