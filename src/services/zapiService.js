@@ -500,7 +500,7 @@ class AmazonDealsBot {
 
             // 3. Embaralhar produtos para não seguir sempre a mesma ordem
             const shuffledProducts = AntiBanHelper.shuffleArray(newProducts);
-            const topProducts = shuffledProducts.slice(0, 5);
+            const topProducts = shuffledProducts.slice(0, 15);
             
             console.log(`\n2️⃣ Enviando ${topProducts.length} produtos (ordem aleatória)...`);
             

@@ -1,5 +1,10 @@
 const { parsePrice, calculateDiscount, extractAsin } = require('../extractors/extractor');
 const { buildAffiliateLink } = require('../services/amazonAffiliate.service');
+const { DeduplicationService } = require('../services/deduplication');
+
+// ✅ Instância global do serviço de deduplicação
+const dedup = new DeduplicationService();
+let isDeduplicationInitialized = false;
 
 // ✅ CONFIGURAÇÕES DE SCRAPING SEGURO
 const CONFIG = {
@@ -12,15 +17,14 @@ const CONFIG = {
     MIN_DISCOUNT: 25,           // Apenas descontos >= 25%
     REQUIRE_PRIME: false,       // Prime opcional
     
-    // Limites de validação (anti-ban)
-    MAX_VALIDATIONS: 12,        // Nunca validar mais que 12 produtos
-    TARGET_VALID_PRODUCTS: 8,   // Parar ao encontrar 8 produtos válidos
+    // 🔥 CONFIGURAÇÃO: 3 categorias x 5 produtos = 15 ofertas
+    CATEGORIES_PER_EXECUTION: 3,
+    PRODUCTS_PER_CATEGORY: 5,
     
-    // Delays (comportamento humano)
-    DELAY_BETWEEN_MIN: 4000,    // Mínimo 4 segundos
-    DELAY_BETWEEN_MAX: 7000,    // Máximo 7 segundos
+    // Delay entre categorias (comportamento humano)
+    DELAY_BETWEEN_CATEGORIES: 8000, // 8s entre categorias
     
-    // Score mínimo para validação
+    // Score mínimo
     MIN_PRODUCT_SCORE: 60
 };
 
@@ -97,24 +101,117 @@ const BLOCKED_KEYWORDS = [
 ];
 
 /**
- * ✅ SELECIONAR CATEGORIA ALEATÓRIA
+ * 🔥 Selecionar 3 categorias aleatórias diferentes
  */
-function selectRandomCategory() {
-    const randomIndex = Math.floor(Math.random() * CATEGORIES.length);
-    return CATEGORIES[randomIndex];
+function selectRandomCategories(count = 3) {
+    const shuffled = [...CATEGORIES].sort(() => Math.random() - 0.5);
+    return shuffled.slice(0, count);
 }
 
 /**
- * ✅ SCRAPER PRINCIPAL COM CATEGORIA ALEATÓRIA
+ * 🔥 FUNÇÃO PRINCIPAL: Buscar em 3 categorias e retornar produtos únicos
+ * ✅ COM CONTROLE ANTI-REPETIÇÃO
  */
-async function scrapeGoldbox(page, specificCategory = null) {
-    // Selecionar categoria (aleatória ou específica)
-    const category = specificCategory || selectRandomCategory();
+async function scrapeGoldbox(page) {
+    console.log("\n" + "=".repeat(70));
+    console.log("🎯 BUSCANDO OFERTAS EM 3 CATEGORIAS ALEATÓRIAS");
+    console.log("=".repeat(70));
+    console.log(`📊 Meta: ${CONFIG.CATEGORIES_PER_EXECUTION} categorias x ${CONFIG.PRODUCTS_PER_CATEGORY} produtos = ${CONFIG.CATEGORIES_PER_EXECUTION * CONFIG.PRODUCTS_PER_CATEGORY} ofertas`);
+    console.log("🛡️  Controle anti-repetição: ATIVO");
+    console.log("=".repeat(70));
     
-    console.log("\n" + "=".repeat(60));
-    console.log(`🎯 CATEGORIA SELECIONADA: ${category.name.toUpperCase()}`);
-    console.log("=".repeat(60));
-    console.log(`🔗 URL: ${category.url}\n`);
+    // ✅ Inicializar serviço de deduplicação (apenas uma vez)
+    if (!isDeduplicationInitialized) {
+        try {
+            await dedup.initialize();
+            isDeduplicationInitialized = true;
+        } catch (error) {
+            console.warn('⚠️  Sistema anti-repetição não disponível:', error.message);
+            console.log('   Continuando sem controle de duplicatas...');
+        }
+    }
+    
+    const selectedCategories = selectRandomCategories(CONFIG.CATEGORIES_PER_EXECUTION);
+    const allProducts = [];
+    
+    console.log("\n📋 Categorias selecionadas:");
+    selectedCategories.forEach((cat, idx) => {
+        console.log(`   ${idx + 1}. ${cat.name}`);
+    });
+    console.log("");
+    
+    for (let i = 0; i < selectedCategories.length; i++) {
+        const category = selectedCategories[i];
+        
+        console.log("\n" + "─".repeat(70));
+        console.log(`📂 CATEGORIA ${i + 1}/${selectedCategories.length}: ${category.name.toUpperCase()}`);
+        console.log("─".repeat(70));
+        
+        try {
+            const products = await scrapeSingleCategory(page, category);
+            
+            if (products.length > 0) {
+                console.log(`✅ ${products.length} produtos coletados de ${category.name}`);
+                allProducts.push(...products);
+            } else {
+                console.log(`⚠️  Nenhum produto qualificado em ${category.name}`);
+            }
+            
+            // Delay entre categorias (exceto na última)
+            if (i < selectedCategories.length - 1) {
+                const delay = CONFIG.DELAY_BETWEEN_CATEGORIES;
+                console.log(`\n⏳ Aguardando ${delay / 1000}s antes da próxima categoria...`);
+                await new Promise(r => setTimeout(r, delay));
+            }
+            
+        } catch (error) {
+            console.error(`❌ Erro ao processar categoria ${category.name}:`, error.message);
+            // Continua para a próxima categoria
+        }
+    }
+    
+    console.log("\n" + "=".repeat(70));
+    console.log(`🎉 BUSCA CONCLUÍDA`);
+    console.log("=".repeat(70));
+    console.log(`📦 Total de produtos coletados: ${allProducts.length}`);
+    console.log(`📊 Distribuição:`);
+    
+    selectedCategories.forEach(cat => {
+        const count = allProducts.filter(p => p.category === cat.name).length;
+        console.log(`   • ${cat.name}: ${count} produtos`);
+    });
+    
+    // ✅ FILTRAR PRODUTOS JÁ ENVIADOS (ANTES DE RETORNAR)
+    let finalProducts = allProducts;
+    
+    if (isDeduplicationInitialized) {
+        try {
+            console.log("\n🔍 Verificando duplicatas...");
+            finalProducts = await dedup.filterNewProducts(allProducts);
+            
+            const removed = allProducts.length - finalProducts.length;
+            if (removed > 0) {
+                console.log(`✂️  ${removed} produto(s) removido(s) (já enviados anteriormente)`);
+                console.log(`✨ ${finalProducts.length} produto(s) são novos e únicos`);
+            } else {
+                console.log(`✅ Todos os ${finalProducts.length} produtos são novos!`);
+            }
+        } catch (error) {
+            console.warn('⚠️  Erro ao verificar duplicatas:', error.message);
+            console.log('   Retornando todos os produtos...');
+        }
+    }
+    
+    console.log("=".repeat(70) + "\n");
+    
+    return finalProducts;
+}
+
+/**
+ * 🔥 Processar uma única categoria
+ */
+async function scrapeSingleCategory(page, category) {
+    console.log(`🔗 URL: ${category.url}`);
     
     await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36');
     await page.goto(category.url, { waitUntil: 'networkidle2', timeout: 60000 });
@@ -131,7 +228,6 @@ async function scrapeGoldbox(page, specificCategory = null) {
     const products = await page.evaluate(() => {
         const items = [];
         const cards = document.querySelectorAll('[data-testid="product-card"], .ProductCard-module__card_uyr_Jh7WpSkPx4iEpn4w, div[data-asin]');
-        console.log(`Encontrados ${cards.length} possíveis cards.`);
         
         cards.forEach(card => {
             try {
@@ -147,24 +243,21 @@ async function scrapeGoldbox(page, specificCategory = null) {
                 let imageUrl = null;
                 
                 if (imageEl) {
-                    // Priorizar src, depois srcset, depois data-src
                     imageUrl = imageEl.src || 
                                imageEl.getAttribute('data-src') || 
                                imageEl.srcset?.split(',')[0]?.trim()?.split(' ')[0];
                     
-                    // Limpar parâmetros de qualidade para obter melhor resolução
                     if (imageUrl) {
-                        // Trocar dimensões pequenas por maiores
                         imageUrl = imageUrl
-                            .replace(/SF\d+,\d+/g, 'SF500,500')  // Aumentar dimensão
-                            .replace(/QL\d+/g, 'QL85');          // Qualidade 85%
+                            .replace(/SF\d+,\d+/g, 'SF500,500')
+                            .replace(/QL\d+/g, 'QL85');
                     }
                 }
 
                 if (titleEl && linkEl) {
                     let priceText = "";
                     if (priceEl) {
-                        const wholePrice = priceEl.innerText.replace(',', ''); // Remove vírgula do inteiro
+                        const wholePrice = priceEl.innerText.replace(',', '');
                         priceText = wholePrice + (fractionEl ? ',' + fractionEl.innerText : ',00');
                     } else {
                         const match = card.innerText.match(/R\$\s?(\d+[\.,]\d{2})/);
@@ -182,18 +275,19 @@ async function scrapeGoldbox(page, specificCategory = null) {
                             oldPriceStr: oldPriceEl ? oldPriceEl.innerText.trim() : null,
                             link: linkEl.href,
                             prime: !!primeEl,
-                            imageUrl: imageUrl  // ✅ ADICIONAR URL DA IMAGEM
+                            imageUrl: imageUrl
                         });
                     }
                 }
             } catch (e) {
-                console.error('Erro ao processar card:', e.message);
+                // Ignora erros individuais
             }
         });
         
-        console.log(`${items.length} produtos extraídos com sucesso.`);
         return items;
     });
+
+    console.log(`📦 ${products.length} produtos extraídos da página`);
 
     const mappedProducts = products.map(p => {
         const price = parsePrice(p.priceStr);
@@ -201,13 +295,12 @@ async function scrapeGoldbox(page, specificCategory = null) {
         const discount = calculateDiscount(oldPrice, price);
         const asin = extractAsin(p.link);
 
-        // ✅ GERAR LINK DE AFILIADO AUTOMATICAMENTE
         let finalLink = p.link;
         if (asin) {
             try {
                 finalLink = buildAffiliateLink(asin, CONFIG.AFFILIATE_TAG);
             } catch (error) {
-                console.warn(`⚠️ Erro ao gerar link afiliado para ASIN ${asin}:`, error.message);
+                console.warn(`⚠️ Erro ao gerar link afiliado para ASIN ${asin}`);
             }
         }
 
@@ -220,35 +313,21 @@ async function scrapeGoldbox(page, specificCategory = null) {
             link: finalLink,
             prime: p.prime,
             category: category.name,
-            imageUrl: p.imageUrl  // ✅ INCLUIR URL DA IMAGEM NO OBJETO FINAL
+            imageUrl: p.imageUrl
         };
     });
 
-    // ✅ FILTROS RÍGIDOS PRÉ-VALIDAÇÃO
-    console.log(`\n🔍 Aplicando filtros rigorosos na categoria ${category.name}...`);
+    // ✅ FILTROS RÍGIDOS
+    console.log(`🔍 Aplicando filtros...`);
     
     const filteredProducts = mappedProducts.filter(p => {
-        // Filtro 1: Faixa de preço
-        if (p.price < CONFIG.MIN_PRICE || p.price > CONFIG.MAX_PRICE) {
-            return false;
-        }
+        if (p.price < CONFIG.MIN_PRICE || p.price > CONFIG.MAX_PRICE) return false;
+        if (!p.discount || p.discount < CONFIG.MIN_DISCOUNT) return false;
+        if (CONFIG.REQUIRE_PRIME && !p.prime) return false;
         
-        // Filtro 2: Desconto mínimo
-        if (!p.discount || p.discount < CONFIG.MIN_DISCOUNT) {
-            return false;
-        }
-        
-        // Filtro 3: Prime obrigatório
-        if (CONFIG.REQUIRE_PRIME && !p.prime) {
-            return false;
-        }
-        
-        // Filtro 4: Palavras-chave bloqueadas
         const titleLower = p.title.toLowerCase();
         for (const keyword of BLOCKED_KEYWORDS) {
-            if (titleLower.includes(keyword)) {
-                return false;
-            }
+            if (titleLower.includes(keyword)) return false;
         }
         
         return true;
@@ -256,13 +335,6 @@ async function scrapeGoldbox(page, specificCategory = null) {
     
     console.log(`   Produtos originais: ${mappedProducts.length}`);
     console.log(`   Após filtros: ${filteredProducts.length}`);
-    console.log(`   Filtros aplicados:`);
-    console.log(`     ✓ Categoria: ${category.name}`);
-    console.log(`     ✓ Preço: R$ ${CONFIG.MIN_PRICE} - R$ ${CONFIG.MAX_PRICE}`);
-    console.log(`     ✓ Desconto mínimo: ${CONFIG.MIN_DISCOUNT}%`);
-    console.log(`     ✓ Prime: ${CONFIG.REQUIRE_PRIME ? 'Obrigatório' : 'Opcional'}`);
-    console.log(`     ✓ Palavras bloqueadas: ${BLOCKED_KEYWORDS.length} termos`);
-    console.log(`     ✓ Tag de afiliado: ${CONFIG.AFFILIATE_TAG}`);
 
     // ✅ CALCULAR SCORE E ORDENAR
     const productsWithScore = filteredProducts.map(p => ({
@@ -272,53 +344,22 @@ async function scrapeGoldbox(page, specificCategory = null) {
     
     const sortedProducts = productsWithScore.sort((a, b) => b.score - a.score);
     
-    console.log(`\n📊 Produtos com score >= ${CONFIG.MIN_PRODUCT_SCORE}: ${sortedProducts.length}`);
+    console.log(`📊 Produtos qualificados (score >= ${CONFIG.MIN_PRODUCT_SCORE}): ${sortedProducts.length}`);
 
-    // ✅ VALIDAR DISPONIBILIDADE (com limites seguros)
-    if (sortedProducts.length === 0) {
-        console.log('\n⚠️ Nenhum produto qualificado para validação.');
-        return [];
+    // ✅ RETORNAR OS 5 MELHORES
+    const topProducts = sortedProducts.slice(0, CONFIG.PRODUCTS_PER_CATEGORY);
+    
+    console.log(`✅ Selecionados ${topProducts.length} melhores produtos`);
+    
+    if (topProducts.length > 0) {
+        console.log(`\n   Top ${topProducts.length} produtos:`);
+        topProducts.forEach((p, idx) => {
+            console.log(`   ${idx + 1}. ${p.title.substring(0, 50)}...`);
+            console.log(`      ASIN: ${p.asin || 'N/A'} | R$ ${p.price.toFixed(2)} | ${p.discount}% OFF | Score: ${p.score}`);
+        });
     }
-    
-    console.log(`\n🔍 Iniciando validação inteligente...`);
-    console.log(`   Limite máximo: ${CONFIG.MAX_VALIDATIONS} produtos`);
-    console.log(`   Meta: ${CONFIG.TARGET_VALID_PRODUCTS} produtos válidos`);
-    
-    const validatedProducts = await validateProductsIntelligent(page, sortedProducts);
 
-    return validatedProducts;
-}
-
-/**
- * ✅ FUNÇÃO AUXILIAR: Buscar em MÚLTIPLAS categorias
- * Use quando quiser varrer várias categorias de uma vez
- */
-async function scrapeMultipleCategories(page, numberOfCategories = 3) {
-    const results = [];
-    const shuffledCategories = [...CATEGORIES].sort(() => Math.random() - 0.5);
-    const selectedCategories = shuffledCategories.slice(0, numberOfCategories);
-    
-    console.log(`\n🎲 Buscando em ${numberOfCategories} categorias aleatórias:`);
-    selectedCategories.forEach(cat => console.log(`   - ${cat.name}`));
-    
-    for (const category of selectedCategories) {
-        console.log(`\n${"=".repeat(60)}`);
-        console.log(`Processando categoria: ${category.name}`);
-        console.log("=".repeat(60));
-        
-        const products = await scrapeGoldbox(page, category);
-        results.push(...products);
-        
-        // Delay entre categorias
-        if (selectedCategories.indexOf(category) < selectedCategories.length - 1) {
-            const delay = 8000 + Math.random() * 5000;
-            console.log(`\n⏳ Aguardando ${(delay / 1000).toFixed(1)}s antes da próxima categoria...`);
-            await new Promise(r => setTimeout(r, delay));
-        }
-    }
-    
-    console.log(`\n✅ TOTAL: ${results.length} produtos encontrados em ${numberOfCategories} categorias`);
-    return results;
+    return topProducts;
 }
 
 /**
@@ -344,132 +385,6 @@ function calculateProductScore(product) {
     return Math.round(score);
 }
 
-/**
- * ✅ VALIDAÇÃO INTELIGENTE (para ao atingir meta)
- */
-async function validateProductsIntelligent(browserPage, products) {
-    const validProducts = [];
-    const maxToValidate = Math.min(products.length, CONFIG.MAX_VALIDATIONS);
-    
-    for (let i = 0; i < maxToValidate; i++) {
-        const product = products[i];
-        
-        console.log(`\n[${i + 1}/${maxToValidate}] Validando (Score: ${product.score}):`);
-        console.log(`   ${product.title.substring(0, 60)}...`);
-        console.log(`   Preço: R$ ${product.price.toFixed(2)} | Desconto: ${product.discount}%`);
-        console.log(`   🔗 Link: ${product.link}`);
-        console.log(`   🖼️ Imagem: ${product.imageUrl ? 'Capturada ✓' : 'Não encontrada'}`);
-        
-        let productPage;
-        
-        try {
-            // ✅ ABRIR NOVA PÁGINA PARA CADA VALIDAÇÃO (mais seguro)
-            productPage = await browserPage.browser().newPage();
-            
-            const isAvailable = await validateSingleProduct(productPage, product);
-            
-            if (isAvailable) {
-                validProducts.push(product);
-                console.log(`   ✅ VÁLIDO (${validProducts.length}/${CONFIG.TARGET_VALID_PRODUCTS})`);
-                
-                // Parar se atingir a meta
-                if (validProducts.length >= CONFIG.TARGET_VALID_PRODUCTS) {
-                    console.log(`\n🎯 Meta atingida! ${validProducts.length} produtos válidos encontrados.`);
-                    break;
-                }
-            } else {
-                console.log(`   ❌ Indisponível`);
-            }
-        } catch (error) {
-            console.log(`   ⚠️ Erro na validação: ${error.message}`);
-        } finally {
-            // ✅ SEMPRE FECHAR A PÁGINA (com proteção contra erro)
-            if (productPage) {
-                try {
-                    await productPage.close();
-                } catch (closeError) {
-                    // Ignorar erro ao fechar (página pode já estar fechada)
-                }
-            }
-        }
-        
-        // ✅ DELAY ALEATÓRIO (4-7 segundos)
-        if (i < maxToValidate - 1 && validProducts.length < CONFIG.TARGET_VALID_PRODUCTS) {
-            const delay = CONFIG.DELAY_BETWEEN_MIN + 
-                         Math.random() * (CONFIG.DELAY_BETWEEN_MAX - CONFIG.DELAY_BETWEEN_MIN);
-            console.log(`   ⏳ Aguardando ${(delay / 1000).toFixed(1)}s...`);
-            await new Promise(r => setTimeout(r, delay));
-        }
-    }
-    
-    console.log(`\n✅ Validação concluída: ${validProducts.length} produtos disponíveis`);
-    console.log(`📋 Todos os produtos retornados já possuem links de afiliado e imagens`);
-    return validProducts;
-}
-
-/**
- * ✅ VALIDAR PRODUTO INDIVIDUAL
- */
-async function validateSingleProduct(page, product) {
-    try {
-        await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36');
-        
-        await page.goto(product.link, { 
-            waitUntil: 'domcontentloaded', 
-            timeout: 20000 
-        });
-        
-        // Delay aleatório
-        await new Promise(r => setTimeout(r, 1500 + Math.random() * 1500));
-        
-        const isAvailable = await page.evaluate(() => {
-            // Seletores de indisponibilidade
-            const unavailableIndicators = [
-                '#availability .a-color-price',
-                '#availability .a-color-state',
-                '[data-feature-name="availability"] .a-color-price',
-                '.availability-msg .a-color-price',
-                '#outOfStock'
-            ];
-            
-            for (const selector of unavailableIndicators) {
-                const el = document.querySelector(selector);
-                if (el) {
-                    const text = el.innerText.toLowerCase();
-                    if (text.includes('não disponível') || 
-                        text.includes('indisponível') ||
-                        text.includes('esgotado') ||
-                        text.includes('fora de estoque')) {
-                        return false;
-                    }
-                }
-            }
-            
-            // Verificar botão de compra
-            const addToCartBtn = document.querySelector(
-                '#add-to-cart-button, #buy-now-button, input[name="submit.add-to-cart"]'
-            );
-            
-            if (!addToCartBtn) return false;
-            
-            // Verificar preço
-            const priceEl = document.querySelector(
-                '.a-price .a-offscreen, #priceblock_ourprice, #priceblock_dealprice, .a-price-whole'
-            );
-            
-            if (!priceEl) return false;
-            
-            return true;
-        });
-        
-        return isAvailable;
-        
-    } catch (error) {
-        console.log(`   ⚠️ Erro: ${error.message}`);
-        return false;
-    }
-}
-
 async function autoScroll(page) {
     await page.evaluate(async () => {
         await new Promise((resolve) => {
@@ -489,8 +404,6 @@ async function autoScroll(page) {
 }
 
 module.exports = { 
-    scrapeGoldbox,              // Busca em 1 categoria aleatória
-    scrapeMultipleCategories,   // Busca em N categorias aleatórias
-    selectRandomCategory,       // Utilitário para pegar categoria aleatória
-    CATEGORIES                  // Exporta lista de categorias
+    scrapeGoldbox,
+    CATEGORIES
 };

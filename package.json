@@ -2,18 +2,31 @@
   "name": "amazon-observer",
   "version": "1.0.0",
   "description": "Amazon Deals Observer - Scraper automático de ofertas",
-  "main": "observer.js",
+  "main": "src/observer.js",
   "scripts": {
-  "start": "node src/observer.js",
-  "schedule": "node src/observer.js",
-  "schedule:test": "node src/observer.js --run-now",
-  "pm2:start": "pm2 start src/observer.js --name amazon-observer",
-  "pm2:stop": "pm2 stop amazon-observer",
-  "pm2:restart": "pm2 restart amazon-observer",
-  "pm2:logs": "pm2 logs amazon-observer",
-  "pm2:status": "pm2 status"
-},
-  "keywords": ["amazon", "scraper", "deals", "observer", "automation"],
+     "start": "node src/observer.js",
+    "observer": "node src/observer.js",
+    "schedule": "node src/scheduler.js",
+    "schedule:test": "node src/scheduler.js --run-now",
+    "history": "node src/manage-history.js",
+    "history:stats": "node src/manage-history.js stats",
+    "history:list": "node src/manage-history.js list",
+    "history:clear": "node src/manage-history.js clear",
+    "pm2:start": "pm2 start src/scheduler.js --name amazon-scheduler",
+    "pm2:start:observer": "pm2 start src/observer.js --name amazon-observer",
+    "pm2:stop": "pm2 stop amazon-scheduler",
+    "pm2:restart": "pm2 restart amazon-scheduler",
+    "pm2:logs": "pm2 logs amazon-scheduler",
+    "pm2:status": "pm2 status",
+    "pm2:delete": "pm2 delete amazon-scheduler"
+  },
+  "keywords": [
+    "amazon",
+    "scraper",
+    "deals",
+    "observer",
+    "automation"
+  ],
   "author": "",
   "license": "ISC",
   "packageManager": "pnpm@10.28.0",
@@ -21,6 +34,7 @@
     "axios": "^1.13.2",
     "dotenv": "^17.2.3",
     "node-cron": "^4.2.1",
-    "puppeteer": "^24.35.0"
+    "puppeteer": "^24.35.0",
+    "sqlite3": "^5.1.7"
   }
 }
