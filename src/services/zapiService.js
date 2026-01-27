@@ -289,12 +289,11 @@ class ProductMessageFormatter {
         
         let cleanTitle = this.cleanText(product.title);
         
-        const doubleSpaceIndex = cleanTitle.indexOf('  ');
-        if (doubleSpaceIndex > 0) {
-            cleanTitle = cleanTitle.substring(0, doubleSpaceIndex);
+        // ✅ NOVO: Limitar título a 100 caracteres
+        const MAX_TITLE_LENGTH = 100;
+        if (cleanTitle.length > MAX_TITLE_LENGTH) {
+            cleanTitle = cleanTitle.substring(0, MAX_TITLE_LENGTH) + '...';
         }
-        
-        cleanTitle = this.summarizeTitle(cleanTitle);
         
         // Variar estrutura da mensagem
         const templates = [
@@ -354,45 +353,6 @@ class ProductMessageFormatter {
         const randomTemplate = templates[Math.floor(Math.random() * templates.length)];
         return randomTemplate();
     }
-    
-    static summarizeTitle(title) {
-        const words = title.split(' ');
-        const uniqueWords = [];
-        let lastWord = '';
-        
-        for (const word of words) {
-            if (word.toLowerCase() !== lastWord.toLowerCase()) {
-                uniqueWords.push(word);
-                lastWord = word;
-            }
-        }
-        
-        let result = uniqueWords.join(' ');
-        
-        const redundantPatterns = [
-            /\s*-\s*Edicao.*/i,
-            /\s*\(Embalagem pode variar\)/i,
-            /\s*Tamanho\s*:\s*\d+.*/i,
-            /\s*Cor\s*:\s*\w+$/i,
-            /\s*,\s*Cor\s*:\s*.*/i,
-            /\s*,\s*Tamanho\s*:\s*.*/i,
-            /\s*\|\s*Estilo\s*:\s*.*/i
-        ];
-        
-        for (const pattern of redundantPatterns) {
-            result = result.replace(pattern, '');
-        }
-        
-        if (result.length > 70) {
-            result = result.substring(0, 70);
-            const lastSpace = result.lastIndexOf(' ');
-            if (lastSpace > 40) {
-                result = result.substring(0, lastSpace);
-            }
-        }
-        
-        return result.trim();
-    }
 
     static formatProductList(products, maxProducts = 5) {
         const emojis = AntiBanHelper.getRandomEmojis();
@@ -401,7 +361,15 @@ class ProductMessageFormatter {
         const topProducts = products.slice(0, maxProducts);
         
         topProducts.forEach((product, index) => {
-            msg += `${index + 1}. ${this.cleanText(product.title)}\n`;
+            let title = this.cleanText(product.title);
+            
+            // Limitar título na lista também
+            const MAX_LIST_TITLE = 60;
+            if (title.length > MAX_LIST_TITLE) {
+                title = title.substring(0, MAX_LIST_TITLE) + '...';
+            }
+            
+            msg += `${index + 1}. ${title}\n`;
             
             if (product.oldPrice) {
                 msg += `   De: R$ ${product.oldPrice.toFixed(2)}\n`;
@@ -542,6 +510,7 @@ class AmazonDealsBot {
             console.log('   ✓ Emojis randomizados');
             console.log('   ✓ Ordem de envio embaralhada');
             console.log('   ✓ Filtro de links duplicados');
+            console.log('   ✓ Títulos limitados com ... (100 caracteres)');
             console.log('='.repeat(60) + '\n');
             
         } catch (error) {

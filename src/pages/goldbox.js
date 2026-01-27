@@ -6,35 +6,40 @@ const { DeduplicationService } = require('../services/deduplication');
 const dedup = new DeduplicationService();
 let isDeduplicationInitialized = false;
 
-// ✅ CONFIGURAÇÕES DE SCRAPING SEGURO
+// ✅ CONFIGURAÇÕES DE SCRAPING SEGURO - SORTEIO AUTOMÁTICO
+const CONFIG_PROFILES = [
+    {
+        MIN_PRICE: 5,
+        MAX_PRICE: 40,
+        MIN_DISCOUNT: 13,
+        REQUIRE_PRIME: false
+    },
+    {
+        MIN_PRICE: 20,
+        MAX_PRICE: 1500,
+        MIN_DISCOUNT: 10,
+        REQUIRE_PRIME: false
+    }
+];
+
+const selectedProfile = CONFIG_PROFILES[Math.floor(Math.random() * CONFIG_PROFILES.length)];
+
 const CONFIG = {
-    // Tag de afiliado (StoreID) - CONFIGURE AQUI SUA TAG
     AFFILIATE_TAG: process.env.AMAZON_AFFILIATE_TAG || 'toppromobr054-20',
-    
-    // Filtros rígidos
-    MIN_PRICE: 20,
-    MAX_PRICE: 1500,
-    MIN_DISCOUNT: 25,           // Apenas descontos >= 25%
-    REQUIRE_PRIME: false,       // Prime opcional
-    
-    // 🔥 CONFIGURAÇÃO: 3 categorias x 5 produtos = 15 ofertas
+    ...selectedProfile,
     CATEGORIES_PER_EXECUTION: 3,
     PRODUCTS_PER_CATEGORY: 5,
-    
-    // Delay entre categorias (comportamento humano)
-    DELAY_BETWEEN_CATEGORIES: 8000, // 8s entre categorias
-    
-    // Score mínimo
-    MIN_PRODUCT_SCORE: 60
+    DELAY_BETWEEN_CATEGORIES: 8000,
+    MIN_PRODUCT_SCORE: 50
 };
 
 // ✅ CATEGORIAS DISPONÍVEIS PARA BUSCA ALEATÓRIA
 const CATEGORIES = [
-    { 
-        id: 'beauty', 
-        url: 'https://www.amazon.com.br/gp/goldbox?bubble-id=deals-collection-beauty',
-        name: 'Beleza'
-    },
+    // { 
+    //     id: 'beauty', 
+    //     url: 'https://www.amazon.com.br/gp/goldbox?bubble-id=deals-collection-beauty',
+    //     name: 'Beleza'
+    // },
     { 
         id: 'electronics', 
         url: 'https://www.amazon.com.br/gp/goldbox?bubble-id=deals-collection-electronics',
@@ -50,16 +55,16 @@ const CATEGORIES = [
         url: 'https://www.amazon.com.br/gp/goldbox?bubble-id=deals-collection-kitchen',
         name: 'Cozinha'
     },
-    { 
-        id: 'baby', 
-        url: 'https://www.amazon.com.br/gp/goldbox?bubble-id=deals-collection-baby',
-        name: 'Bebês'
-    },
-    { 
-        id: 'pet-products', 
-        url: 'https://www.amazon.com.br/gp/goldbox?bubble-id=deals-collection-pet-products',
-        name: 'Pet Shop'
-    },
+    // { 
+    //     id: 'baby', 
+    //     url: 'https://www.amazon.com.br/gp/goldbox?bubble-id=deals-collection-baby',
+    //     name: 'Bebês'
+    // },
+    // { 
+    //     id: 'pet-products', 
+    //     url: 'https://www.amazon.com.br/gp/goldbox?bubble-id=deals-collection-pet-products',
+    //     name: 'Pet Shop'
+    // },
     { 
         id: 'video-games', 
         url: 'https://www.amazon.com.br/gp/goldbox?bubble-id=deals-collection-video-games',
@@ -75,11 +80,11 @@ const CATEGORIES = [
         url: 'https://www.amazon.com.br/gp/goldbox?bubble-id=deals-collection-eletro',
         name: 'Eletrodomésticos'
     },
-    { 
-        id: 'sports', 
-        url: 'https://www.amazon.com.br/gp/goldbox?bubble-id=deals-collection-sports',
-        name: 'Esportes'
-    },
+    // { 
+    //     id: 'sports', 
+    //     url: 'https://www.amazon.com.br/gp/goldbox?bubble-id=deals-collection-sports',
+    //     name: 'Esportes'
+    // },
     { 
         id: 'tools', 
         url: 'https://www.amazon.com.br/gp/goldbox?bubble-id=deals-collection-tools',
@@ -97,7 +102,7 @@ const BLOCKED_KEYWORDS = [
     'livro', 'apostila', 'edição escolar', 'usado', 'reembalado',
     'refil', 'peça de reposição', 'recarga', 'ebook', 'e-book',
     'revista', 'jornal', 'assinatura', 'gift card', 'vale presente',
-    'curso online', 'treinamento', 'seminário', 'Matemática'
+    'curso online', 'treinamento', 'seminário', 'Matemática', 'Armação'
 ];
 
 /**
