@@ -410,7 +410,6 @@ class ProductMessageFormatter {
 
     static cleanText(text) {
         return text
-            .replace(/[^\x00-\x7F]/g, '')
             .replace(/\s+/g, ' ')
             .trim();
     }

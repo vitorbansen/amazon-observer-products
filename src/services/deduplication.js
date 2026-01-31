@@ -25,32 +25,147 @@ class DeduplicationService {
                 fs.mkdirSync(dir, { recursive: true });
             }
 
-            this.db = new sqlite3.Database(this.dbPath, (err) => {
+            this.db = new sqlite3.Database(this.dbPath, async (err) => {
                 if (err) {
                     console.error('❌ Erro ao abrir banco de dados:', err);
                     reject(err);
                     return;
                 }
 
-                // Criar tabela se não existir
-                this.db.run(`
-                    CREATE TABLE IF NOT EXISTS sent_products (
-                        id INTEGER PRIMARY KEY AUTOINCREMENT,
-                        title_normalized TEXT NOT NULL UNIQUE,
-                        title_original TEXT,
-                        price REAL,
-                        discount REAL,
-                        category TEXT,
-                        sent_at DATETIME DEFAULT CURRENT_TIMESTAMP
-                    )
-                `, (err) => {
+                try {
+                    // Verificar se a tabela existe e qual sua estrutura
+                    await this.migrateDatabase();
+                    console.log('✅ Sistema anti-repetição inicializado (comparação por título)');
+                    resolve();
+                } catch (error) {
+                    console.error('❌ Erro ao migrar banco de dados:', error);
+                    reject(error);
+                }
+            });
+        });
+    }
+
+    /**
+     * 🔄 Migra o banco de dados para a nova estrutura
+     */
+    async migrateDatabase() {
+        return new Promise((resolve, reject) => {
+            // Verificar se a tabela existe
+            this.db.get(
+                "SELECT name FROM sqlite_master WHERE type='table' AND name='sent_products'",
+                async (err, row) => {
                     if (err) {
-                        console.error('❌ Erro ao criar tabela:', err);
                         reject(err);
-                    } else {
-                        console.log('✅ Sistema anti-repetição inicializado (comparação por título)');
-                        resolve();
+                        return;
                     }
+
+                    if (!row) {
+                        // Tabela não existe, criar nova
+                        await this.createNewTable();
+                        resolve();
+                    } else {
+                        // Tabela existe, verificar se tem a coluna title_normalized
+                        this.db.all("PRAGMA table_info(sent_products)", async (err, columns) => {
+                            if (err) {
+                                reject(err);
+                                return;
+                            }
+
+                            const hasNormalizedColumn = columns.some(col => col.name === 'title_normalized');
+
+                            if (!hasNormalizedColumn) {
+                                console.log('🔄 Migrando banco de dados para nova estrutura...');
+                                await this.recreateTable();
+                                console.log('✅ Migração concluída!');
+                            }
+                            
+                            resolve();
+                        });
+                    }
+                }
+            );
+        });
+    }
+
+    /**
+     * 🆕 Cria a tabela nova
+     */
+    async createNewTable() {
+        return new Promise((resolve, reject) => {
+            this.db.run(`
+                CREATE TABLE IF NOT EXISTS sent_products (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    title_normalized TEXT NOT NULL UNIQUE,
+                    title_original TEXT,
+                    price REAL,
+                    discount REAL,
+                    category TEXT,
+                    sent_at DATETIME DEFAULT CURRENT_TIMESTAMP
+                )
+            `, (err) => {
+                if (err) {
+                    reject(err);
+                } else {
+                    resolve();
+                }
+            });
+        });
+    }
+
+    /**
+     * 🔄 Recria a tabela com a nova estrutura
+     */
+    async recreateTable() {
+        return new Promise((resolve, reject) => {
+            this.db.serialize(() => {
+                // Renomear tabela antiga
+                this.db.run('ALTER TABLE sent_products RENAME TO sent_products_old', (err) => {
+                    if (err) {
+                        reject(err);
+                        return;
+                    }
+
+                    // Criar nova tabela
+                    this.db.run(`
+                        CREATE TABLE sent_products (
+                            id INTEGER PRIMARY KEY AUTOINCREMENT,
+                            title_normalized TEXT NOT NULL UNIQUE,
+                            title_original TEXT,
+                            price REAL,
+                            discount REAL,
+                            category TEXT,
+                            sent_at DATETIME DEFAULT CURRENT_TIMESTAMP
+                        )
+                    `, (err) => {
+                        if (err) {
+                            reject(err);
+                            return;
+                        }
+
+                        // Migrar dados antigos (se existir coluna 'title')
+                        this.db.run(`
+                            INSERT OR IGNORE INTO sent_products (title_normalized, title_original, price, discount, category, sent_at)
+                            SELECT 
+                                LOWER(REPLACE(REPLACE(REPLACE(title, ' ', ''), '-', ''), ',', '')),
+                                title,
+                                price,
+                                discount,
+                                category,
+                                sent_at
+                            FROM sent_products_old
+                            WHERE title IS NOT NULL
+                        `, (err) => {
+                            // Ignorar erro se a coluna 'title' não existir na tabela antiga
+                            
+                            // Remover tabela antiga
+                            this.db.run('DROP TABLE sent_products_old', (err) => {
+                                if (err) {
+                                    console.warn('⚠️  Não foi possível remover tabela antiga:', err.message);
+                                }
+                                resolve();
+                            });
+                        });
+                    });
                 });
             });
         });
