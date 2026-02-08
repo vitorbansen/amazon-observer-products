@@ -28,20 +28,16 @@ const CONFIG = {
     AFFILIATE_TAG: process.env.AMAZON_AFFILIATE_TAG || 'toppromobr054-20',
     ...selectedProfile,
     CATEGORIES_PER_EXECUTION: 3,
-    PRODUCTS_PER_CATEGORY: 5,
+    PRODUCTS_PER_CATEGORY: 15,
     DELAY_BETWEEN_CATEGORIES: 8000,
-    MIN_PRODUCT_SCORE: 50,
-    VERIFY_PRICES: true, // 🔥 NOVO: Ativar verificação de preços
-    DELAY_BETWEEN_VERIFICATIONS: 2000 // Delay entre verificações de produtos
+    MIN_PRODUCT_SCORE: 45,
+    VERIFY_PRICES: true, 
+    DELAY_BETWEEN_VERIFICATIONS: 3000, // Aumentado para 3s
+    PRICE_TOLERANCE: 0.50 // Tolerância de R$ 0.50
 };
 
 // ✅ CATEGORIAS DISPONÍVEIS PARA BUSCA ALEATÓRIA
 const CATEGORIES = [
-    // { 
-    //     id: 'beauty', 
-    //     url: 'https://www.amazon.com.br/gp/goldbox?bubble-id=deals-collection-beauty',
-    //     name: 'Beleza'
-    // },
     { 
         id: 'electronics', 
         url: 'https://www.amazon.com.br/gp/goldbox?bubble-id=deals-collection-electronics',
@@ -57,16 +53,6 @@ const CATEGORIES = [
         url: 'https://www.amazon.com.br/gp/goldbox?bubble-id=deals-collection-kitchen',
         name: 'Cozinha'
     },
-    // { 
-    //     id: 'baby', 
-    //     url: 'https://www.amazon.com.br/gp/goldbox?bubble-id=deals-collection-baby',
-    //     name: 'Bebês'
-    // },
-    // { 
-    //     id: 'pet-products', 
-    //     url: 'https://www.amazon.com.br/gp/goldbox?bubble-id=deals-collection-pet-products',
-    //     name: 'Pet Shop'
-    // },
     { 
         id: 'video-games', 
         url: 'https://www.amazon.com.br/gp/goldbox?bubble-id=deals-collection-video-games',
@@ -82,11 +68,6 @@ const CATEGORIES = [
         url: 'https://www.amazon.com.br/gp/goldbox?bubble-id=deals-collection-eletro',
         name: 'Eletrodomésticos'
     },
-    // { 
-    //     id: 'sports', 
-    //     url: 'https://www.amazon.com.br/gp/goldbox?bubble-id=deals-collection-sports',
-    //     name: 'Esportes'
-    // },
     { 
         id: 'tools', 
         url: 'https://www.amazon.com.br/gp/goldbox?bubble-id=deals-collection-tools',
@@ -104,7 +85,7 @@ const BLOCKED_KEYWORDS = [
     'livro', 'apostila', 'edição escolar', 'usado', 'reembalado',
     'refil', 'peça de reposição', 'recarga', 'ebook', 'e-book',
     'revista', 'jornal', 'assinatura', 'gift card', 'vale presente',
-    'curso online', 'treinamento', 'seminário', 'Matemática', 'Armação'
+    'curso online', 'treinamento', 'seminário', 'Matemática', 'Armação','Capa','Óculos','Ray-ban','capa case'
 ];
 
 /**
@@ -319,6 +300,7 @@ async function scrapeSingleCategory(page, category) {
             discount,
             asin,
             link: finalLink,
+            originalLink: p.link, // ✅ GUARDAR LINK ORIGINAL
             prime: p.prime,
             category: category.name,
             imageUrl: p.imageUrl
@@ -354,44 +336,57 @@ async function scrapeSingleCategory(page, category) {
     
     console.log(`📊 Produtos qualificados (score >= ${CONFIG.MIN_PRODUCT_SCORE}): ${sortedProducts.length}`);
 
-    // ✅ SELECIONAR OS 5 MELHORES
+    // ✅ SELECIONAR OS MELHORES
     let topProducts = sortedProducts.slice(0, CONFIG.PRODUCTS_PER_CATEGORY);
     
-    // 🔥 NOVA ETAPA: VERIFICAR PREÇOS NA PÁGINA DO PRODUTO
+    // 🔥 VERIFICAR PREÇOS CLICANDO NO PRODUTO
     if (CONFIG.VERIFY_PRICES && topProducts.length > 0) {
-        console.log(`\n🔍 Verificando preços nas páginas individuais...`);
+        console.log(`\n🔍 Verificando preços clicando nos produtos...`);
         
         const verifiedProducts = [];
         
         for (let i = 0; i < topProducts.length; i++) {
             const product = topProducts[i];
-            console.log(`\n   [${i + 1}/${topProducts.length}] Verificando produto...`);
+            console.log(`\n   [${i + 1}/${topProducts.length}] ${product.title.substring(0, 60)}...`);
+            console.log(`      💰 Preço Goldbox: R$ ${product.price.toFixed(2)}`);
             
-            const verification = await verifyProductPrices(page, product);
+            const verification = await verifyProductPriceByClicking(page, product);
             
             if (verification.verified) {
+                // ✅ ATUALIZAR PRODUTO COM PREÇOS VERIFICADOS
+                product.verifiedPrice = verification.currentPrice;
+                product.verifiedOldPrice = verification.oldPrice;
                 verifiedProducts.push(product);
+                console.log(`      ✅ APROVADO!`);
             } else {
-                console.log(`      ❌ Produto removido por discrepância de preços`);
+                console.log(`      ❌ REPROVADO - Produto removido`);
             }
             
             // Delay entre verificações
             if (i < topProducts.length - 1) {
-                await new Promise(r => setTimeout(r, CONFIG.DELAY_BETWEEN_VERIFICATIONS));
+                const delay = CONFIG.DELAY_BETWEEN_VERIFICATIONS;
+                console.log(`      ⏳ Aguardando ${delay / 1000}s...`);
+                await new Promise(r => setTimeout(r, delay));
             }
         }
         
         topProducts = verifiedProducts;
-        console.log(`\n   ✅ ${topProducts.length} produto(s) verificado(s) com sucesso`);
+        console.log(`\n   ✅ ${topProducts.length} produto(s) verificado(s) e aprovado(s)`);
         
-        // Voltar para a página da categoria
-        await page.goto(category.url, { waitUntil: 'networkidle2', timeout: 30000 });
+        // 🔄 Voltar para a página da categoria
+        try {
+            console.log(`\n   🔙 Voltando para página da categoria...`);
+            await page.goto(category.url, { waitUntil: 'networkidle2', timeout: 30000 });
+            await new Promise(r => setTimeout(r, 2000));
+        } catch (error) {
+            console.warn(`   ⚠️  Erro ao voltar para categoria: ${error.message}`);
+        }
     }
     
-    console.log(`\n✅ Selecionados ${topProducts.length} melhores produtos`);
+    console.log(`\n✅ Total final: ${topProducts.length} produtos`);
     
     if (topProducts.length > 0) {
-        console.log(`\n   Top ${topProducts.length} produtos:`);
+        console.log(`\n   📋 Produtos aprovados:`);
         topProducts.forEach((p, idx) => {
             console.log(`   ${idx + 1}. ${p.title.substring(0, 50)}...`);
             console.log(`      ASIN: ${p.asin || 'N/A'} | R$ ${p.price.toFixed(2)} | ${p.discount}% OFF | Score: ${p.score}`);
@@ -402,143 +397,166 @@ async function scrapeSingleCategory(page, category) {
 }
 
 /**
- * 🔍 VERIFICAR PREÇOS NA PÁGINA DO PRODUTO
- * Acessa a página individual e compara os preços com os da listagem
+ * 🔍 VERIFICAR PREÇO CLICANDO NO PRODUTO
+ * ✅ Acessa o link ORIGINAL e extrai o preço REAL da página do produto
  */
-async function verifyProductPrices(page, product) {
+async function verifyProductPriceByClicking(page, product) {
     try {
-        console.log(`      📄 Acessando página do produto...`);
+        // 🔗 USAR O LINK ORIGINAL (sem tag de afiliado)
+        const productUrl = product.originalLink || product.link.split('?')[0];
         
-        // Construir URL limpa do produto (sem tag de afiliado para verificação)
-        const cleanUrl = product.asin 
-            ? `https://www.amazon.com.br/dp/${product.asin}`
-            : product.link.split('?')[0];
+        console.log(`      🔗 Acessando: ${productUrl.substring(0, 80)}...`);
         
-        // Acessar página do produto
-        await page.goto(cleanUrl, { 
-            waitUntil: 'networkidle2', 
+        // 📄 NAVEGAR PARA A PÁGINA DO PRODUTO
+        await page.goto(productUrl, { 
+            waitUntil: 'domcontentloaded',
             timeout: 30000 
         });
         
-        // Delay aleatório para evitar detecção
-        await new Promise(r => setTimeout(r, 1500 + Math.random() * 1500));
+        // ⏳ Aguardar conteúdo carregar
+        await new Promise(r => setTimeout(r, 2000 + Math.random() * 1000));
         
-        // Extrair preços da página
-        const prices = await page.evaluate(() => {
+        // 💰 EXTRAIR PREÇOS DA PÁGINA DO PRODUTO
+        const extractedData = await page.evaluate(() => {
             const result = {
                 currentPrice: null,
-                oldPrice: null
+                oldPrice: null,
+                priceText: null,
+                oldPriceText: null,
+                htmlSnippet: null
             };
             
-            // 💰 PREÇO ATUAL - Múltiplos seletores para cobrir diferentes layouts
+            // 🎯 SELETORES PARA PREÇO ATUAL (baseado no HTML que você forneceu)
             const currentPriceSelectors = [
+                // Selector específico do HTML que você mostrou
                 '.priceToPay .a-price-whole',
+                '.reinventPricePriceToPayMargin .a-price-whole',
+                // Outros seletores comuns
                 '[data-feature-name="corePriceDisplay"] .a-price-whole',
                 '.a-price.priceToPay .a-price-whole',
-                '.reinventPricePriceToPayMargin .a-price-whole',
-                '#corePriceDisplay_desktop_feature_div .a-price-whole'
+                '#corePriceDisplay_desktop_feature_div .a-price-whole',
+                '#corePrice_feature_div .a-price-whole'
             ];
             
             const currentFractionSelectors = [
                 '.priceToPay .a-price-fraction',
+                '.reinventPricePriceToPayMargin .a-price-fraction',
                 '[data-feature-name="corePriceDisplay"] .a-price-fraction',
-                '.a-price.priceToPay .a-price-fraction',
-                '.reinventPricePriceToPayMargin .a-price-fraction'
+                '.a-price.priceToPay .a-price-fraction'
             ];
             
-            let currentPriceEl = null;
+            // Buscar preço atual
+            let wholeEl = null;
+            let fractionEl = null;
+            
             for (const selector of currentPriceSelectors) {
-                currentPriceEl = document.querySelector(selector);
-                if (currentPriceEl) break;
+                wholeEl = document.querySelector(selector);
+                if (wholeEl) {
+                    // Capturar HTML para debug
+                    const parent = wholeEl.closest('.a-price') || wholeEl.closest('div');
+                    if (parent) {
+                        result.htmlSnippet = parent.outerHTML.substring(0, 500);
+                    }
+                    break;
+                }
             }
             
-            let currentFractionEl = null;
             for (const selector of currentFractionSelectors) {
-                currentFractionEl = document.querySelector(selector);
-                if (currentFractionEl) break;
+                fractionEl = document.querySelector(selector);
+                if (fractionEl) break;
             }
             
-            if (currentPriceEl) {
-                const whole = currentPriceEl.innerText.replace(/[^\d]/g, '');
-                const fraction = currentFractionEl ? currentFractionEl.innerText.replace(/[^\d]/g, '') : '00';
+            if (wholeEl) {
+                const whole = wholeEl.textContent.replace(/[^\d]/g, '');
+                const fraction = fractionEl ? fractionEl.textContent.replace(/[^\d]/g, '') : '00';
                 result.currentPrice = `${whole},${fraction}`;
+                result.priceText = `R$ ${whole},${fraction}`;
             }
             
-            // 💵 PREÇO ANTIGO (De: R$ X) - Múltiplos seletores
+            // 💵 PREÇO ANTIGO (riscado)
             const oldPriceSelectors = [
-                '.basisPrice .a-price[data-a-strike="true"]',
+                '.basisPrice .a-price[data-a-strike="true"] .a-offscreen',
                 '[data-a-strike="true"] .a-offscreen',
                 '.a-text-price[data-a-strike="true"]',
                 '.basisPrice .a-text-price',
-                '[class*="basisPrice"] .a-price-whole'
+                '.a-price.a-text-price[data-a-strike="true"]'
             ];
             
-            let oldPriceEl = null;
             for (const selector of oldPriceSelectors) {
-                oldPriceEl = document.querySelector(selector);
-                if (oldPriceEl) break;
-            }
-            
-            if (oldPriceEl) {
-                const text = oldPriceEl.innerText || oldPriceEl.textContent;
-                const match = text.match(/R\$\s?(\d+[\.,]\d{2})/);
-                if (match) {
-                    result.oldPrice = match[1].replace('.', ',');
+                const oldPriceEl = document.querySelector(selector);
+                if (oldPriceEl) {
+                    const text = oldPriceEl.textContent || oldPriceEl.innerText;
+                    const match = text.match(/R\$\s?(\d+[\.,]\d{2})/);
+                    if (match) {
+                        result.oldPrice = match[1].replace('.', ',');
+                        result.oldPriceText = text.trim();
+                        break;
+                    }
                 }
             }
             
             return result;
         });
         
-        // Converter strings para números
-        const verifiedPrice = parsePrice(prices.currentPrice);
-        const verifiedOldPrice = parsePrice(prices.oldPrice);
+        // 🔢 CONVERTER PARA NÚMEROS
+        const verifiedPrice = parsePrice(extractedData.currentPrice);
+        const verifiedOldPrice = parsePrice(extractedData.oldPrice);
         
-        console.log(`      💰 Preço Goldbox: R$ ${product.price.toFixed(2)} | Página: R$ ${verifiedPrice?.toFixed(2) || 'N/A'}`);
-        console.log(`      💵 Preço Antigo Goldbox: R$ ${product.oldPrice?.toFixed(2) || 'N/A'} | Página: R$ ${verifiedOldPrice?.toFixed(2) || 'N/A'}`);
+        console.log(`      💰 Preço na página: ${extractedData.priceText || 'NÃO ENCONTRADO'}`);
+        if (extractedData.oldPriceText) {
+            console.log(`      💵 Preço antigo: ${extractedData.oldPriceText}`);
+        }
         
-        // Validar se conseguimos extrair pelo menos o preço atual
+        // ❌ Falha se não conseguiu extrair o preço
         if (!verifiedPrice || verifiedPrice === 0) {
             console.log(`      ⚠️  Não foi possível extrair o preço da página`);
+            if (extractedData.htmlSnippet) {
+                console.log(`      🔍 HTML encontrado: ${extractedData.htmlSnippet.substring(0, 200)}...`);
+            }
             return { verified: false };
         }
         
-        // Comparar preços (tolerância de R$ 1.00 para variações e arredondamentos)
+        // ✅ COMPARAR PREÇOS
         const priceDiff = Math.abs(verifiedPrice - product.price);
-        const priceMatches = priceDiff <= 1.00;
+        const priceMatches = priceDiff <= CONFIG.PRICE_TOLERANCE;
         
-        // Para preço antigo, aceitar se estiver próximo OU se não houver preço antigo na página
-        let oldPriceMatches = true;
-        if (product.oldPrice && verifiedOldPrice && verifiedOldPrice > 0) {
-            const oldPriceDiff = Math.abs(verifiedOldPrice - product.oldPrice);
-            oldPriceMatches = oldPriceDiff <= 1.00;
-        }
+        console.log(`      📊 Comparação:`);
+        console.log(`         Goldbox: R$ ${product.price.toFixed(2)}`);
+        console.log(`         Página:  R$ ${verifiedPrice.toFixed(2)}`);
+        console.log(`         Diferença: R$ ${priceDiff.toFixed(2)}`);
         
-        if (priceMatches && oldPriceMatches) {
-            console.log(`      ✅ Preços confirmados!`);
-            return {
-                verified: true,
-                currentPrice: verifiedPrice,
-                oldPrice: verifiedOldPrice
-            };
-        } else {
-            console.log(`      ❌ DISCREPÂNCIA DETECTADA:`);
-            if (!priceMatches) {
-                console.log(`         • Diferença no preço atual: R$ ${priceDiff.toFixed(2)}`);
-            }
-            if (!oldPriceMatches) {
-                console.log(`         • Preço antigo não bate`);
-            }
-            return {
+        if (!priceMatches) {
+            console.log(`      ⚠️  PREÇO NÃO BATE! (tolerância: R$ ${CONFIG.PRICE_TOLERANCE})`);
+            return { 
                 verified: false,
                 currentPrice: verifiedPrice,
                 oldPrice: verifiedOldPrice
             };
         }
         
+        // ✅ Verificar preço antigo (se existir)
+        if (product.oldPrice && verifiedOldPrice && verifiedOldPrice > 0) {
+            const oldPriceDiff = Math.abs(verifiedOldPrice - product.oldPrice);
+            const oldPriceMatches = oldPriceDiff <= CONFIG.PRICE_TOLERANCE;
+            
+            if (!oldPriceMatches) {
+                console.log(`      ⚠️  Preço antigo não bate (diff: R$ ${oldPriceDiff.toFixed(2)})`);
+                // Não bloqueia, só avisa
+            }
+        }
+        
+        return {
+            verified: true,
+            currentPrice: verifiedPrice,
+            oldPrice: verifiedOldPrice || product.oldPrice
+        };
+        
     } catch (error) {
-        console.log(`      ⚠️  Erro ao verificar: ${error.message}`);
-        return { verified: false };
+        console.log(`      ❌ Erro ao verificar: ${error.message}`);
+        return { 
+            verified: false,
+            error: error.message 
+        };
     }
 }
 

@@ -4,7 +4,7 @@
   "description": "Amazon Deals Observer - Scraper automático de ofertas",
   "main": "src/observer.js",
   "scripts": {
-     "start": "node src/observer.js",
+    "start": "node src/observer.js",
     "observer": "node src/observer.js",
     "schedule": "node src/scheduler.js",
     "schedule:test": "node src/scheduler.js --run-now",
@@ -34,7 +34,7 @@
     "axios": "^1.13.2",
     "dotenv": "^17.2.3",
     "node-cron": "^4.2.1",
-    "puppeteer": "^24.35.0",
+    "puppeteer": "^24.36.1",
     "sqlite3": "^5.1.7"
   }
 }

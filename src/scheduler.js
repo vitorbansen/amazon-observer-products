@@ -100,77 +100,15 @@ async function executeObserver() {
  * ✅ SEM REPETIÇÃO dos últimos 100 produtos
  */
 
-// 1️⃣ Execução: 09:00
-cron.schedule('0 0 9 * * *', () => {
-    console.log('⏰ AGENDAMENTO 1/8: 09:00 (Manhã cedo)');
+// 1️
+cron.schedule('0 0 9-23/2 * * *', () => {
+    console.log('⏰ AGENDAMENTO: a cada 2 horas a partir das 09:00');
     executeObserver();
 }, {
     scheduled: true,
     timezone: "America/Sao_Paulo"
 });
 
-// 2️⃣ Execução: 11:00
-cron.schedule('0 0 11 * * *', () => {
-    console.log('⏰ AGENDAMENTO 2/8: 11:00 (Meio da manhã)');
-    executeObserver();
-}, {
-    scheduled: true,
-    timezone: "America/Sao_Paulo"
-});
-
-// 3️⃣ Execução: 13:00
-cron.schedule('0 0 13 * * *', () => {
-    console.log('⏰ AGENDAMENTO 3/8: 13:00 (Início da tarde)');
-    executeObserver();
-}, {
-    scheduled: true,
-    timezone: "America/Sao_Paulo"
-});
-
-// 4️⃣ Execução: 15:00
-cron.schedule('0 0 15 * * *', () => {
-    console.log('⏰ AGENDAMENTO 4/8: 15:00 (Meio da tarde)');
-    executeObserver();
-}, {
-    scheduled: true,
-    timezone: "America/Sao_Paulo"
-});
-
-// 5️⃣ Execução: 17:00
-cron.schedule('0 0 17 * * *', () => {
-    console.log('⏰ AGENDAMENTO 5/8: 17:00 (Final da tarde)');
-    executeObserver();
-}, {
-    scheduled: true,
-    timezone: "America/Sao_Paulo"
-});
-
-// 6️⃣ Execução: 19:00
-cron.schedule('0 0 19 * * *', () => {
-    console.log('⏰ AGENDAMENTO 6/8: 19:00 (Início da noite)');
-    executeObserver();
-}, {
-    scheduled: true,
-    timezone: "America/Sao_Paulo"
-});
-
-// 7️⃣ Execução: 21:00
-cron.schedule('0 0 21 * * *', () => {
-    console.log('⏰ AGENDAMENTO 7/8: 21:00 (Meio da noite)');
-    executeObserver();
-}, {
-    scheduled: true,
-    timezone: "America/Sao_Paulo"
-});
-
-// 8️⃣ Execução: 23:00
-cron.schedule('0 0 23 * * *', () => {
-    console.log('⏰ AGENDAMENTO 8/8: 23:00 (Final da noite)');
-    executeObserver();
-}, {
-    scheduled: true,
-    timezone: "America/Sao_Paulo"
-});
 
 console.log('\n' + '='.repeat(70));
 console.log('🤖 SCHEDULER INICIADO - MODO COMPETITIVO + ANTI-REPETIÇÃO');
