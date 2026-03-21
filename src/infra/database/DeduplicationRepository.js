@@ -109,15 +109,23 @@ class DeduplicationRepository {
    */
   async filterNewProducts(products) {
     const newProducts = [];
+    const seenInBatch = new Set();
 
     for (const product of products) {
       if (!product.asin) continue;
 
+      // Verifica se já vimos este ASIN neste mesmo lote
+      if (seenInBatch.has(product.asin)) {
+        this.logger.debug(`Duplicata interna removida: ${product.title.substring(0, 60)}...`);
+        continue;
+      }
+
       const alreadySent = await this.wasAlreadySent(product.asin);
       if (!alreadySent) {
         newProducts.push(product);
+        seenInBatch.add(product.asin);
       } else {
-        this.logger.debug(`Duplicata removida: ${product.title.substring(0, 60)}...`);
+        this.logger.debug(`Duplicata histórica removida: ${product.title.substring(0, 60)}...`);
       }
     }
 

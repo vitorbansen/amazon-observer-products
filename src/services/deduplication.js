@@ -216,6 +216,7 @@ class DeduplicationService {
      */
     async filterNewProducts(products) {
         const newProducts = [];
+        const seenInBatch = new Set();
         
         console.log(`\n🔍 Verificando ${products.length} produtos contra histórico (por título)...`);
         
@@ -225,12 +226,21 @@ class DeduplicationService {
                 continue;
             }
 
+            const normalized = this.normalizeTitle(product.title);
+            
+            // Verifica se já vimos este título neste mesmo lote
+            if (seenInBatch.has(normalized)) {
+                console.log(`⏭️  Duplicata interna removida: ${product.title.substring(0, 60)}...`);
+                continue;
+            }
+
             const alreadySent = await this.wasRecentlySent(product.title);
             
             if (!alreadySent) {
                 newProducts.push(product);
+                seenInBatch.add(normalized);
             } else {
-                console.log(`⏭️  Duplicata removida: ${product.title.substring(0, 60)}...`);
+                console.log(`⏭️  Duplicata histórica removida: ${product.title.substring(0, 60)}...`);
             }
         }
 
