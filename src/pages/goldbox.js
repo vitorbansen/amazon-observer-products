@@ -11,13 +11,13 @@ const CONFIG_PROFILES = [
     {
         MIN_PRICE: 5,
         MAX_PRICE: 40,
-        MIN_DISCOUNT: 13,
+        MIN_DISCOUNT: 20,
         REQUIRE_PRIME: false
     },
     {
         MIN_PRICE: 20,
         MAX_PRICE: 1500,
-        MIN_DISCOUNT: 10,
+        MIN_DISCOUNT: 15,
         REQUIRE_PRIME: false
     }
 ];
@@ -27,13 +27,13 @@ const selectedProfile = CONFIG_PROFILES[Math.floor(Math.random() * CONFIG_PROFIL
 const CONFIG = {
     AFFILIATE_TAG: process.env.AMAZON_AFFILIATE_TAG || 'kompreaki05-20',
     ...selectedProfile,
-    CATEGORIES_PER_EXECUTION: 3,
-    PRODUCTS_PER_CATEGORY: 15,
+    CATEGORIES_PER_EXECUTION: 1,
+    PRODUCTS_PER_CATEGORY: 5,
     DELAY_BETWEEN_CATEGORIES: 8000,
-    MIN_PRODUCT_SCORE: 45,
+    MIN_PRODUCT_SCORE: 40,
     VERIFY_PRICES: true, 
     DELAY_BETWEEN_VERIFICATIONS: 3000, // Aumentado para 3s
-    PRICE_TOLERANCE: 0.50 // Tolerância de R$ 0.50
+    PRICE_TOLERANCE: 10 // Tolerância de R$ 10.00
 };
 
 // ✅ CATEGORIAS DISPONÍVEIS PARA BUSCA ALEATÓRIA
@@ -53,11 +53,11 @@ const CATEGORIES = [
         url: 'https://www.amazon.com.br/gp/goldbox?bubble-id=deals-collection-kitchen',
         name: 'Cozinha'
     },
-    { 
-        id: 'video-games', 
-        url: 'https://www.amazon.com.br/gp/goldbox?bubble-id=deals-collection-video-games',
-        name: 'Games'
-    },
+    // { 
+    //     id: 'video-games', 
+    //     url: 'https://www.amazon.com.br/gp/goldbox?bubble-id=deals-collection-video-games',
+    //     name: 'Games'
+    // },
     { 
         id: 'fashion', 
         url: 'https://www.amazon.com.br/gp/goldbox?bubble-id=deals-collection-fashion',
@@ -68,11 +68,11 @@ const CATEGORIES = [
         url: 'https://www.amazon.com.br/gp/goldbox?bubble-id=deals-collection-eletro',
         name: 'Eletrodomésticos'
     },
-    { 
-        id: 'tools', 
-        url: 'https://www.amazon.com.br/gp/goldbox?bubble-id=deals-collection-tools',
-        name: 'Ferramentas'
-    },
+    // { 
+    //     id: 'tools', 
+    //     url: 'https://www.amazon.com.br/gp/goldbox?bubble-id=deals-collection-tools',
+    //     name: 'Ferramentas'
+    // },
     { 
         id: 'computers', 
         url: 'https://www.amazon.com.br/gp/goldbox?bubble-id=deals-collection-computers',
@@ -85,7 +85,8 @@ const BLOCKED_KEYWORDS = [
     'livro', 'apostila', 'edição escolar', 'usado', 'reembalado',
     'refil', 'peça de reposição', 'recarga', 'ebook', 'e-book',
     'revista', 'jornal', 'assinatura', 'gift card', 'vale presente',
-    'curso online', 'treinamento', 'seminário', 'Matemática', 'Armação','Capa','Óculos','Ray-ban','capa case'
+    'curso online', 'treinamento', 'seminário', 'matemática', 
+    'armação', 'capa', 'óculos', 'ray-ban', 'capa case'
 ];
 
 /**
