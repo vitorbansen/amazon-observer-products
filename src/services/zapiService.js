@@ -3,7 +3,11 @@
 // ========================================
 
 const axios = require('axios');
+const sharp = require('sharp');
 const AIService = require('../services/AIService');
+
+// Tamanho padrão das imagens enviadas
+const IMAGE_SIZE = 500;
 
 class ZApiService {
     constructor() {
@@ -114,13 +118,33 @@ class ZApiService {
         this.log(`🖼️ URL da imagem: ${imageUrl}`);
         
         try {
+            // 📥 Baixar imagem
+            console.log(`   🔄 Baixando e redimensionando imagem para ${IMAGE_SIZE}x${IMAGE_SIZE}...`);
+            const imageResponse = await axios.get(imageUrl, { 
+                responseType: 'arraybuffer',
+                timeout: 15000
+            });
+
+            // 📐 Redimensionar com sharp (mantém proporção, fundo branco se necessário)
+            const resizedBuffer = await sharp(Buffer.from(imageResponse.data))
+                .resize(IMAGE_SIZE, IMAGE_SIZE, { 
+                    fit: 'contain',
+                    background: { r: 255, g: 255, b: 255, alpha: 1 }
+                })
+                .jpeg({ quality: 85 })
+                .toBuffer();
+
+            // 🔁 Converter para base64
+            const base64Image = `data:image/jpeg;base64,${resizedBuffer.toString('base64')}`;
+            console.log(`   ✅ Imagem redimensionada (${Math.round(resizedBuffer.length / 1024)}KB)`);
+
             const payload = {
                 phone: groupId,
-                image: imageUrl,
+                image: base64Image,
                 caption: caption
             };
 
-            this.log('\n🌐 Requisição:', payload);
+            this.log('\n🌐 Requisição:', { phone: groupId, image: '[base64]', caption });
             
             const response = await axios.post(
                 `${this.baseUrl}/send-image`,
@@ -252,13 +276,13 @@ class ProductMessageFormatter {
         const discount = Math.round(product.discount || 0);
 
         // Formato:
-        // *COMENTÁRIO DE IMPACTO* 🚀
+        // *COMENTÁRIO DE IMPACTO* 
         // *Título Lapidado*
         // ~~De: R$X~~ → *R$Y* 🛍️ | *43% OFF*
         // Link: url
 
         let msg = `*${intro}* \n\n`;
-        msg += `*${cleanTitle}*\n\n`;
+        msg += `${cleanTitle}\n\n`;
 
         if (product.oldPrice) {
             msg += `R$${product.oldPrice.toFixed(0)} → *R$${product.price.toFixed(0)}* 🛍️ | *${discount}% OFF*\n\n`;

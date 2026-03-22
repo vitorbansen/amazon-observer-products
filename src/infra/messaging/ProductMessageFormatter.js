@@ -14,7 +14,7 @@ class ProductMessageFormatter {
     const impactComment = product.ai_impact || "OFERTA SELECIONADA";
     const title = product.ai_title || this._limitTitle(product.title);
     
-    let message = `*${impactComment}* 🚀\n\n`;
+    let message = `*${impactComment}* \n\n`;
     message += `*${title}*\n\n`;
     
     const oldPriceStr = product.oldPrice ? `${product.oldPrice.toFixed(0)}` : '';
