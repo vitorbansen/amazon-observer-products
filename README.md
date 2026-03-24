@@ -33,5 +33,5 @@ Script em Node.js utilizando Puppeteer para observar ofertas públicas da Amazon
 - Delays aleatórios.
 - Tratamento de erros e seletores dinâmicos.
 - Cálculo de desconto real: `((preco_antigo - preco_atual) / preco_antigo) * 100`.
-- Filtro de desconto ≥ 11%.
+- Filtro de desconto ≥ 20%.
 - Persistência sem duplicidade por ASIN.
