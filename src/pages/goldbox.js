@@ -1,3 +1,11 @@
+/**
+ * 🔍 SEARCH SCRAPER - Busca 4 produtos de uma categoria sorteada
+ * ==============================================================
+ * Sorteia UMA categoria, depois busca 4 produtos DIFERENTES dela.
+ * Se um produto não tiver resultado apto, tenta outro da mesma
+ * categoria até completar os 4 slots ou esgotar as opções.
+ */
+
 const { parsePrice, calculateDiscount, extractAsin } = require('../extractors/extractor');
 const { buildAffiliateLink } = require('../services/amazonAffiliate.service');
 const { DeduplicationService } = require('../services/deduplication');
@@ -6,20 +14,12 @@ const { DeduplicationService } = require('../services/deduplication');
 const dedup = new DeduplicationService();
 let isDeduplicationInitialized = false;
 
-// ✅ CONFIGURAÇÕES DE SCRAPING SEGURO - SORTEIO AUTOMÁTICO
+// ─────────────────────────────────────────────
+// ⚙️  CONFIGURAÇÕES
+// ─────────────────────────────────────────────
 const CONFIG_PROFILES = [
-    {
-        MIN_PRICE: 5,
-        MAX_PRICE: 40,
-        MIN_DISCOUNT: 20,
-        REQUIRE_PRIME: false
-    },
-    {
-        MIN_PRICE: 20,
-        MAX_PRICE: 1500,
-        MIN_DISCOUNT: 15,
-        REQUIRE_PRIME: false
-    }
+    { MIN_PRICE: 10, MAX_PRICE: 2000, MIN_DISCOUNT: 0, REQUIRE_PRIME: false },
+    { MIN_PRICE: 10, MAX_PRICE: 2000, MIN_DISCOUNT: 0, REQUIRE_PRIME: false }
 ];
 
 const selectedProfile = CONFIG_PROFILES[Math.floor(Math.random() * CONFIG_PROFILES.length)];
@@ -27,582 +27,1032 @@ const selectedProfile = CONFIG_PROFILES[Math.floor(Math.random() * CONFIG_PROFIL
 const CONFIG = {
     AFFILIATE_TAG: process.env.AMAZON_AFFILIATE_TAG || 'kompreaki05-20',
     ...selectedProfile,
-    CATEGORIES_PER_EXECUTION: 1,
-    PRODUCTS_PER_CATEGORY: 5,
-    DELAY_BETWEEN_CATEGORIES: 8000,
-    MIN_PRODUCT_SCORE: 40,
-    VERIFY_PRICES: true, 
-    DELAY_BETWEEN_VERIFICATIONS: 3000, // Aumentado para 3s
-    PRICE_TOLERANCE: 10 // Tolerância de R$ 10.00
+    PRODUCTS_PER_RUN: 4,        // Quantos produtos finais queremos por execução
+    MIN_PRODUCT_SCORE: 0,       // Sem filtro de score — só ordena do melhor pro pior
+    VERIFY_PRICES: true,
+    DELAY_BETWEEN_VERIFICATIONS: 3000,
+    PRICE_TOLERANCE: 10
 };
 
-// ✅ CATEGORIAS DISPONÍVEIS PARA BUSCA ALEATÓRIA
-const CATEGORIES = [
-    { 
-        id: 'electronics', 
-        url: 'https://www.amazon.com.br/gp/goldbox?bubble-id=deals-collection-electronics',
-        name: 'Eletrônicos'
+// ─────────────────────────────────────────────
+// 🗂️  MAPA DE CATEGORIAS → PRODUTOS
+// ─────────────────────────────────────────────
+const SEARCH_CATALOG = {
+    'Casa': {
+        produtos: [
+            'air fryer',
+            'aspirador portátil',
+            'aspirador robô',
+            'cafeteira elétrica',
+            'liquidificador potente',
+            'panela elétrica',
+            'panela pressão elétrica',
+            'purificador de água',
+            'filtro de água',
+            'ventilador torre',
+            'ventilador silencioso',
+            'aquecedor elétrico',
+            'climatizador de ar',
+            'umidificador de ar',
+            'lâmpada smart',
+            'luminária led',
+            'fita led',
+            'tomada inteligente',
+            'sensor presença',
+            'câmera segurança wifi',
+            'fechadura digital',
+            'suporte notebook',
+            'mesa portátil notebook',
+            'organizador cozinha',
+            'organizador geladeira',
+            'organizador armário',
+            'dispenser automático sabão',
+            'mop giratório',
+            'aspirador vertical',
+            'escova elétrica limpeza',
+            'robo limpa vidro',
+            'secador roupa portátil',
+            'ferro a vapor',
+            'vaporizador roupa',
+            'varal retrátil',
+            'balança digital',
+            'garrafa térmica',
+            'kit panelas antiaderente',
+            'cooktop elétrico',
+            'forno elétrico',
+            'mini forno',
+            'torneira elétrica',
+            'torneira gourmet',
+            'chuveiro elétrico',
+            'ducha elétrica',
+            'espelho led',
+            'projetor portátil',
+            'difusor aromático',
+            'aromatizador ambiente',
+            'desumidificador'
+        ]
     },
-    { 
-        id: 'home', 
-        url: 'https://www.amazon.com.br/gp/goldbox?bubble-id=deals-collection-home',
-        name: 'Casa'
+    'Cozinha': {
+        produtos: [
+            'batedeira planetária',
+            'batedeira elétrica',
+            'máquina café cápsula',
+            'cafeteira expresso',
+            'chaleira elétrica',
+            'grill elétrico',
+            'sanduicheira',
+            'torradeira',
+            'centrífuga frutas',
+            'multiprocessador',
+            'moedor café elétrico',
+            'moedor pimenta elétrico',
+            'descascador elétrico',
+            'abridor vinho elétrico',
+            'seladora alimentos',
+            'máquina waffle',
+            'panela wok',
+            'panela ferro fundido',
+            'frigideira antiaderente',
+            'frigideira cerâmica',
+            'panela vapor',
+            'cuscuzeira',
+            'leiteira inox',
+            'churrasqueira elétrica',
+            'kit churrasco',
+            'faca chef profissional',
+            'jogo facas premium',
+            'afiador facas profissional',
+            'tábua corte profissional',
+            'ralador multifuncional',
+            'cortador legumes espiral',
+            'cortador batata palito',
+            'fatiador mandoline',
+            'forma air fryer silicone',
+            'assadeira vidro',
+            'assadeira antiaderente',
+            'travessa porcelana',
+            'pote hermético vidro',
+            'kit marmita térmica',
+            'lancheira térmica',
+            'porta temperos giratório',
+            'organizador temperos gaveta',
+            'dosador azeite',
+            'galheteiro vidro',
+            'escorredor louça inox',
+            'tapete silicone culinário',
+            'luva térmica cozinha',
+            'kit utensílios silicone'
+        ]
     },
-    { 
-        id: 'kitchen', 
-        url: 'https://www.amazon.com.br/gp/goldbox?bubble-id=deals-collection-kitchen',
-        name: 'Cozinha'
+    'Eletrônicos': {
+        produtos: [
+            'fone bluetooth',
+            'headset gamer',
+            'earbuds sem fio',
+            'caixa de som bluetooth',
+            'soundbar tv',
+            'smartwatch',
+            'smartband',
+            'tablet android',
+            'ipad',
+            'notebook',
+            'chromebook',
+            'monitor gamer',
+            'monitor ultrawide',
+            'webcam full hd',
+            'webcam 4k',
+            'microfone condensador',
+            'microfone usb',
+            'ring light',
+            'tripé celular',
+            'estabilizador gimbal',
+            'controle videogame',
+            'controle bluetooth',
+            'console portátil',
+            'óculos vr',
+            'drone com câmera',
+            'projetor portátil',
+            'mini projetor',
+            'tv box android',
+            'fire tv stick',
+            'google chromecast',
+            'roteador wifi',
+            'roteador mesh',
+            'repetidor wifi',
+            'adaptador bluetooth usb',
+            'placa captura vídeo',
+            'ssd externo',
+            'hd externo',
+            'pendrive alta velocidade',
+            'hub usb c',
+            'dock station notebook',
+            'cooler notebook',
+            'teclado mecânico',
+            'mouse gamer',
+            'mousepad rgb',
+            'fonte carregador notebook',
+            'carregador portátil power bank',
+            'cabo lightning',
+            'cabo usb reforçado',
+            'leitor cartão memória',
+            'adaptador hdmi'
+        ]
     },
-    // { 
-    //     id: 'video-games', 
-    //     url: 'https://www.amazon.com.br/gp/goldbox?bubble-id=deals-collection-video-games',
-    //     name: 'Games'
-    // },
-    { 
-        id: 'fashion', 
-        url: 'https://www.amazon.com.br/gp/goldbox?bubble-id=deals-collection-fashion',
-        name: 'Moda'
+    'Informática': {
+        produtos: [
+            'memória ram ddr4',
+            'memória ram ddr5',
+            'processador intel',
+            'processador ryzen',
+            'placa de vídeo geforce',
+            'placa de vídeo radeon',
+            'placa mãe',
+            'fonte pc gamer',
+            'gabinete gamer',
+            'cooler cpu',
+            'water cooler',
+            'pasta térmica',
+            'kit upgrade pc',
+            'placa de rede wifi pci',
+            'placa de som',
+            'adaptador wifi usb',
+            'switch ethernet',
+            'cabo de rede cat6',
+            'cabo de rede cat7',
+            'extensor usb',
+            'extensor hdmi',
+            'kvm switch',
+            'mesa digitalizadora',
+            'caneta digital',
+            'impressora multifuncional',
+            'impressora laser',
+            'scanner portátil',
+            'etiquetadora',
+            'leitor código barras',
+            'calculadora científica',
+            'calculadora financeira',
+            'suporte cpu',
+            'base notebook com cooler',
+            'apoio ergonômico teclado',
+            'apoio ergonômico mouse',
+            'mouse ergonômico',
+            'teclado ergonômico',
+            'capa teclado',
+            'protetor tela notebook',
+            'trava notebook segurança',
+            'organizador cabos mesa',
+            'caixa organizadora fios',
+            'adaptador vga hdmi',
+            'adaptador displayport hdmi',
+            'dock hd externo',
+            'case hd 2.5',
+            'case ssd nvme',
+            'gravador dvd externo',
+            'leitor dvd externo',
+            'placa captura usb'
+        ]
     },
-    { 
-        id: 'eletro', 
-        url: 'https://www.amazon.com.br/gp/goldbox?bubble-id=deals-collection-eletro',
-        name: 'Eletrodomésticos'
+    'Eletrodomésticos': {
+        produtos: [
+            'lava e seca',
+            'máquina lavar roupa',
+            'tanquinho lavagem',
+            'secadora roupa',
+            'lava louças',
+            'geladeira frost free',
+            'geladeira duplex',
+            'geladeira inverse',
+            'freezer horizontal',
+            'freezer vertical',
+            'frigobar',
+            'adega climatizada',
+            'cooktop gás',
+            'coifa inox',
+            'depurador cozinha',
+            'forno embutir',
+            'microondas inverter',
+            'microondas grill',
+            'forno microondas espelhado',
+            'aspirador de pó vertical sem fio',
+            'aspirador de pó com fio potente',
+            'enceradeira elétrica',
+            'lavadora alta pressão',
+            'lavadora portátil',
+            'passadeira a vapor',
+            'vaporizador portátil roupa',
+            'máquina costura elétrica',
+            'overlock doméstica',
+            'ferro de passar sem fio',
+            'ferro de passar antiaderente',
+            'ventilador coluna',
+            'ventilador mesa potente',
+            'climatizador evaporativo',
+            'ar condicionado portátil',
+            'ar condicionado split',
+            'desumidificador ar elétrico',
+            'aquecedor a óleo',
+            'aquecedor cerâmico',
+            'circulador de ar',
+            'exaustor cozinha',
+            'triturador alimentos pia',
+            'bebedouro água elétrico',
+            'máquina gelo',
+            'frigobar retrô',
+            'freezer cervejeira',
+            'adega vinho pequena',
+            'lavadora ultrassônica',
+            'máquina lavar portátil',
+            'secadora portátil',
+            'centrífuga roupas'
+        ]
     },
-    // { 
-    //     id: 'tools', 
-    //     url: 'https://www.amazon.com.br/gp/goldbox?bubble-id=deals-collection-tools',
-    //     name: 'Ferramentas'
-    // },
-    { 
-        id: 'computers', 
-        url: 'https://www.amazon.com.br/gp/goldbox?bubble-id=deals-collection-computers',
-        name: 'Informática'
-    }
-];
+    'Moda': {
+        produtos: [
+            'tênis nike',
+            'tênis adidas',
+            'tênis puma',
+            'tênis casual masculino',
+            'tênis feminino casual',
+            'tênis esportivo masculino',
+            'tênis esportivo feminino',
+            'tênis corrida',
+            'chinelo havaianas',
+            'sandália feminina confortável',
+            'bota feminina',
+            'bota masculina',
+            'sapato social masculino',
+            'sapato casual masculino',
+            'mochila impermeável',
+            'mochila notebook',
+            'bolsa feminina premium',
+            'bolsa transversal feminina',
+            'bolsa couro feminina',
+            'carteira masculina couro',
+            'carteira feminina',
+            'cinto couro masculino',
+            'cinto feminino',
+            'relógio masculino',
+            'relógio feminino',
+            'óculos sol masculino',
+            'óculos sol feminino',
+            'óculos polarizado',
+            'jaqueta masculina',
+            'jaqueta feminina',
+            'jaqueta corta vento',
+            'casaco inverno masculino',
+            'casaco feminino inverno',
+            'moletom masculino',
+            'moletom feminino',
+            'conjunto moletom',
+            'camiseta básica premium',
+            'camiseta oversized',
+            'camisa polo masculina',
+            'camisa social masculina',
+            'legging academia',
+            'shorts esportivo',
+            'bermuda masculina',
+            'vestido feminino casual',
+            'vestido festa',
+            'pijama feminino',
+            'pijama masculino',
+            'kit cueca masculina',
+            'kit calcinha',
+            'boné aba curva'
+        ]
+    },
+    'Beleza': {
+        produtos: [
+            'secador cabelo profissional',
+            'secador cabelo iônico',
+            'chapinha profissional',
+            'escova alisadora',
+            'modelador de cachos',
+            'escova rotativa',
+            'escova secadora',
+            'máquina cortar cabelo',
+            'aparador barba',
+            'barbeador elétrico',
+            'depilador elétrico',
+            'laser depilação portátil',
+            'escova limpeza facial',
+            'massageador facial',
+            'roller facial',
+            'dermaroller',
+            'sérum vitamina c',
+            'sérum ácido hialurônico',
+            'creme anti idade',
+            'creme facial hidratante',
+            'protetor solar facial',
+            'protetor solar corporal',
+            'base líquida',
+            'corretivo facial',
+            'pó compacto',
+            'paleta maquiagem',
+            'kit maquiagem profissional',
+            'esponja maquiagem',
+            'kit pincéis maquiagem',
+            'fixador maquiagem',
+            'removedor maquiagem',
+            'água micelar',
+            'tônico facial',
+            'gel limpeza facial',
+            'kit skincare',
+            'perfume masculino importado',
+            'perfume feminino importado',
+            'body splash',
+            'creme corporal hidratante',
+            'óleo corporal',
+            'hidratante labial',
+            'kit cuidados pele',
+            'máscara facial',
+            'máscara capilar',
+            'óleo capilar',
+            'finalizador cabelo',
+            'kit shampoo profissional',
+            'shampoo antiqueda',
+            'condicionador profissional',
+            'leave in cabelo'
+        ]
+    },
+    'Esporte': {
+        produtos: [
+            'tênis corrida',
+            'tênis treino',
+            'mochila academia',
+            'garrafa térmica academia',
+            'squeeze esportivo',
+            'whey protein',
+            'creatina',
+            'pré treino',
+            'barra proteína',
+            'coqueteleira',
+            'halter ajustável',
+            'kit halteres',
+            'barra musculação',
+            'banco musculação',
+            'estação musculação',
+            'band elástica',
+            'kit elástico resistência',
+            'corda pular',
+            'colchonete yoga',
+            'tapete yoga',
+            'rolo liberação miofascial',
+            'bola pilates',
+            'bola suíça',
+            'caneleira peso',
+            'luva musculação',
+            'cinta lombar',
+            'joelheira esportiva',
+            'tornozeleira esportiva',
+            'faixa abdominal',
+            'smartband fitness',
+            'relógio esportivo',
+            'fones esportivos',
+            'óculos ciclismo',
+            'capacete ciclismo',
+            'luva ciclismo',
+            'bermuda ciclismo',
+            'camisa ciclismo',
+            'suporte bicicleta parede',
+            'bomba encher pneu',
+            'lanterna bicicleta',
+            'garrafa ciclismo',
+            'mochila hidratação',
+            'patinete elétrico',
+            'skate',
+            'longboard',
+            'bola futebol',
+            'bola basquete',
+            // 'bola vôlei',
+            'rede esportiva',
+            'apito esportivo'
+        ]
+    },
+    'Bebês': {
+        produtos: [
+            'babá eletrônica',
+            'monitor bebê câmera',
+            'carrinho bebê',
+            'cadeira alimentação bebê',
+            'bebê conforto',
+            'cadeirinha carro bebê',
+            'berço portátil',
+            'cercadinho bebê',
+            'banheira bebê',
+            'banheira dobrável bebê',
+            'almofada amamentação',
+            'extrator leite elétrico',
+            'esterilizador mamadeira',
+            'aquecedor mamadeira',
+            'mamadeira anticolica',
+            'kit mamadeira',
+            'chupeta ortodôntica',
+            'kit higiene bebê',
+            'termômetro digital bebê',
+            'termômetro banho bebê',
+            'umidificador quarto bebê',
+            'tapete atividades bebê',
+            'tapete eva infantil',
+            'andador bebê',
+            'canguru bebê',
+            'mochila maternidade',
+            'bolsa maternidade',
+            'fralda descartável',
+            'kit fralda promoção',
+            'lenço umedecido',
+            'kit enxoval bebê',
+            'cobertor bebê',
+            'roupinha bebê kit',
+            'macacão bebê'
+        ]
+    },
+    'Pet Shop': {
+        produtos: [
+            'comedouro automático pet',
+            'bebedouro fonte pet',
+            'bebedouro automático pet',
+            'arranhador gato',
+            'brinquedo interativo pet',
+            'brinquedo interativo gato',
+            'brinquedo cachorro resistente',
+            'cama cachorro',
+            'cama pet premium',
+            'tapete higiênico cachorro',
+            'kit tapete higiênico',
+            'areia gato',
+            'areia sílica gato',
+            'caixa areia gato',
+            'coleira antipulgas',
+            'antipulgas cachorro',
+            'antipulgas gato',
+            'guia retrátil cachorro',
+            'peitoral cachorro',
+            'coleira cachorro',
+            'transportadora pet',
+            'bolsa transporte pet',
+            'mochila pet',
+            'escova tira pelos pet',
+            'escova pet removedor pelos',
+            'kit higiene pet',
+            'shampoo pet',
+            'máquina tosa pet',
+            'soprador pet',
+            'cortador unha pet',
+            'cercadinho pet',
+            'portão pet segurança',
+            'câmera monitor pet',
+            'fonte água pet',
+            'roupa cachorro inverno'
+        ]
+    },
+    'Ferramentas': {
+        produtos: [
+            'furadeira parafusadeira',
+            'parafusadeira sem fio',
+            'kit furadeira parafusadeira',
+            'nível laser',
+            'trena digital',
+            'fita métrica',
+            'kit ferramentas completo',
+            'jogo chaves precisão',
+            'jogo chaves allen',
+            'jogo chaves combinadas',
+            'alicate universal',
+            'alicate pressão',
+            'alicate corte',
+            'multímetro digital',
+            'detector de metais parede',
+            'serra tico tico',
+            'serra circular',
+            'esmerilhadeira angular',
+            'lixadeira elétrica',
+            'mini retífica',
+            'pistola cola quente',
+            'pistola pintura elétrica',
+            'compressor ar portátil',
+            'lavadora alta pressão',
+            'caixa ferramentas organizadora',
+            'maleta ferramentas',
+            'organizador ferramentas',
+            'escada dobrável',
+            'lanterna recarregável',
+            'refletor led portátil',
+            'extensão elétrica',
+            'estabilizador energia',
+            'bateria ferramenta sem fio',
+            'carregador bateria ferramenta',
+            'kit brocas aço',
+            'kit brocas concreto',
+            'kit bits parafusadeira'
+        ]
+    },
+    'Games': {
+        produtos: [
+            'controle ps5',
+            'controle xbox wireless',
+            'headset gamer',
+            'headset gamer rgb',
+            'cadeira gamer',
+            'monitor gamer',
+            'teclado gamer rgb',
+            'mouse gamer',
+            'mousepad gamer grande',
+            'mousepad gamer rgb',
+            'suporte headset',
+            'suporte controle',
+            'base carregadora controle',
+            'cooler notebook gamer',
+            'hub usb gamer',
+            'webcam streaming',
+            'microfone gamer usb',
+            'ring light streaming',
+            'placa captura video',
+            'ssd para games',
+            'memoria ram gamer',
+            'adaptador bluetooth pc',
+            'repetidor wifi gamer',
+            'cartão memória nintendo switch',
+            'case nintendo switch',
+            'grip controle',
+            'gatilho controle celular',
+            'controle bluetooth celular',
+            'suporte celular gamer',
+            'cadeira gamer suporte lombar'
+        ]
+    },
+};
 
-// ✅ PALAVRAS-CHAVE BLOQUEADAS (produtos que não convertem)
+// ✅ PALAVRAS-CHAVE BLOQUEADAS
 const BLOCKED_KEYWORDS = [
-    'livro', 'apostila', 'edição escolar', 'usado', 'reembalado',
-    'refil', 'peça de reposição', 'recarga', 'ebook', 'e-book',
+    'livro', 'apostila', 'usado', 'reembalado', 'refil',
+    'peça de reposição', 'recarga', 'ebook', 'e-book',
     'revista', 'jornal', 'assinatura', 'gift card', 'vale presente',
-    'curso online', 'treinamento', 'seminário', 'matemática', 
-    'armação', 'capa', 'óculos', 'ray-ban', 'capa case'
+    'curso online', 'capa case', 'capa para', 'película', 'armação'
 ];
 
-/**
- * 🔥 Selecionar 3 categorias aleatórias diferentes
- */
-function selectRandomCategories(count = 3) {
-    const shuffled = [...CATEGORIES].sort(() => Math.random() - 0.5);
-    return shuffled.slice(0, count);
+// ─────────────────────────────────────────────
+// 🎲 SORTEAR CATEGORIA (UMA SÓ POR EXECUÇÃO)
+// ─────────────────────────────────────────────
+function pickRandomCategory() {
+    const categories = Object.keys(SEARCH_CATALOG);
+    return categories[Math.floor(Math.random() * categories.length)];
 }
 
 /**
- * 🔥 FUNÇÃO PRINCIPAL: Buscar em 3 categorias e retornar produtos únicos
- * ✅ COM CONTROLE ANTI-REPETIÇÃO E VERIFICAÇÃO DE PREÇOS
+ * Retorna uma lista embaralhada dos produtos de uma categoria.
+ * Assim podemos iterar na ordem aleatória sem repetir keywords.
  */
-async function scrapeGoldbox(page) {
-    console.log("\n" + "=".repeat(70));
-    console.log("🎯 BUSCANDO OFERTAS EM 3 CATEGORIAS ALEATÓRIAS");
-    console.log("=".repeat(70));
-    console.log(`📊 Meta: ${CONFIG.CATEGORIES_PER_EXECUTION} categorias x ${CONFIG.PRODUCTS_PER_CATEGORY} produtos = ${CONFIG.CATEGORIES_PER_EXECUTION * CONFIG.PRODUCTS_PER_CATEGORY} ofertas`);
-    console.log("🛡️  Controle anti-repetição: ATIVO");
-    console.log(`🔍 Verificação de preços: ${CONFIG.VERIFY_PRICES ? 'ATIVA' : 'DESATIVADA'}`);
-    console.log("=".repeat(70));
-    
-    // ✅ Inicializar serviço de deduplicação (apenas uma vez)
+function shuffleProducts(category) {
+    const produtos = [...SEARCH_CATALOG[category].produtos];
+    for (let i = produtos.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [produtos[i], produtos[j]] = [produtos[j], produtos[i]];
+    }
+    return produtos;
+}
+
+// ─────────────────────────────────────────────
+// 🏆 CALCULAR SCORE DO PRODUTO (0-100)
+// ─────────────────────────────────────────────
+function calculateProductScore(product) {
+    let score = 0;
+
+    if      (product.discount >= 50) score += 40;
+    else if (product.discount >= 40) score += 35;
+    else if (product.discount >= 30) score += 25;
+    else if (product.discount >= 15) score += 15;
+    else                             score += 3;
+
+    const r = product.rating || 0;
+    if      (r >= 4.5) score += 30;
+    else if (r >= 4.0) score += 20;
+    else if (r >= 3.5) score += 10;
+    else if (r >  0)   score += 3;
+
+    if (product.prime) score += 15;
+
+    if      (product.price >= 50  && product.price <= 500) score += 15;
+    else if (product.price >= 30  && product.price <= 800) score += 10;
+    else score += 5;
+
+    return Math.round(score);
+}
+
+// ─────────────────────────────────────────────
+// 🔍 BUSCAR PRODUTOS NA AMAZON
+// ─────────────────────────────────────────────
+async function searchAmazon(page, keyword, category) {
+    console.log(`\n🔍 Buscando: "${keyword}" [${category}]`);
+
+    await page.setUserAgent(
+        'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 ' +
+        '(KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36'
+    );
+
+    const encodedKeyword = encodeURIComponent(keyword);
+    const searchUrl = `https://www.amazon.com.br/s?k=${encodedKeyword}&s=price-asc-rank`;
+
+    await page.goto(searchUrl, { waitUntil: 'networkidle2', timeout: 60000 });
+    await new Promise(r => setTimeout(r, 2000 + Math.random() * 2000));
+
+    console.log(`   🔗 URL: ${searchUrl}`);
+
+    const rawProducts = await page.evaluate(() => {
+        const items = [];
+        const cards = document.querySelectorAll('[data-component-type="s-search-result"]');
+
+        cards.forEach(card => {
+            try {
+                const asin = card.getAttribute('data-asin');
+                if (!asin) return;
+
+                const titleEl = card.querySelector('h2 .a-link-normal span, h2 span.a-size-medium, h2 span.a-size-base-plus, h2 span.a-size-mini, [data-cy="title-recipe"] h2 span');
+                const title   = titleEl ? titleEl.innerText.trim() : null;
+                if (!title || title.length < 5) return;
+
+                const priceEl         = card.querySelector('.a-price:not(.a-text-price) .a-price-whole');
+                const priceFractionEl = card.querySelector('.a-price:not(.a-text-price) .a-price-fraction');
+                let priceStr = null;
+                if (priceEl) {
+                    const whole    = priceEl.innerText.replace(/\D/g, '');
+                    const fraction = priceFractionEl ? priceFractionEl.innerText.replace(/\D/g, '') : '00';
+                    priceStr = `${whole},${fraction}`;
+                }
+                if (!priceStr) {
+                    const match = card.innerText.match(/R\$\s?(\d[\d.]*[\.,]\d{2})/);
+                    if (match) priceStr = match[1].replace('.', ',');
+                }
+                if (!priceStr) return;
+
+                let oldPriceStr = null;
+                const strikeEl = card.querySelector('[data-a-strike="true"]');
+                if (strikeEl) {
+                    const visibleEl  = strikeEl.querySelector('[aria-hidden="true"]');
+                    const rawVisible = visibleEl ? (visibleEl.innerText || '') : '';
+                    const matchVisible = rawVisible.match(/R\$\s?(\d[\d.]*[\.,]\d{2})/);
+                    if (matchVisible) {
+                        oldPriceStr = matchVisible[1].replace('.', ',');
+                    }
+                    if (!oldPriceStr) {
+                        const offscreenEl = strikeEl.querySelector('.a-offscreen');
+                        if (offscreenEl) {
+                            const rawOffscreen = offscreenEl.innerText || '';
+                            const matchOffscreen = rawOffscreen.match(/R\$\s?(\d[\d.]*[\.,]\d{2})/);
+                            if (matchOffscreen) oldPriceStr = matchOffscreen[1].replace('.', ',');
+                        }
+                    }
+                    if (!oldPriceStr) {
+                        const rawStrike = strikeEl.innerText || '';
+                        const matchStrike = rawStrike.match(/R\$\s?(\d[\d.]*[\.,]\d{2})/);
+                        if (matchStrike) oldPriceStr = matchStrike[1].replace('.', ',');
+                    }
+                } else {
+                    const oldOffscreen = card.querySelector('.a-text-price .a-offscreen');
+                    if (oldOffscreen) {
+                        const raw   = oldOffscreen.innerText || '';
+                        const match = raw.match(/R\$\s?(\d[\d.]*[\.,]\d{2})/);
+                        if (match) oldPriceStr = match[1].replace('.', ',');
+                    }
+                }
+
+                const linkEl = card.querySelector('h2 a.a-link-normal, a.a-link-normal[href*="/dp/"]');
+                const href   = linkEl ? linkEl.href : null;
+                if (!href) return;
+
+                const primeEl = card.querySelector('.a-icon-prime, [aria-label*="Prime"]');
+
+                const imgEl  = card.querySelector('img.s-image');
+                let imageUrl = imgEl ? (imgEl.src || imgEl.getAttribute('data-src')) : null;
+                if (imageUrl) {
+                    imageUrl = imageUrl
+                        .replace(/SF\d+,\d+/g, 'SF500,500')
+                        .replace(/QL\d+/g, 'QL85');
+                }
+
+                const ratingEl = card.querySelector('.a-icon-star-small .a-icon-alt, .a-icon-star .a-icon-alt');
+                const rating   = ratingEl ? parseFloat(ratingEl.innerText) : null;
+
+                items.push({ asin, title, priceStr, oldPriceStr, href, prime: !!primeEl, imageUrl, rating });
+            } catch (_) {}
+        });
+
+        return items;
+    });
+
+    console.log(`📦 ${rawProducts.length} produtos extraídos`);
+
+    if (rawProducts.length === 0) {
+        console.warn('⚠️  Nenhum card encontrado — possível bloqueio de bot ou mudança de seletor');
+        return [];
+    }
+
+    rawProducts.slice(0, 3).forEach((p, i) => {
+        console.log(`   [${i+1}] ${p.title?.substring(0, 50)} | R$ ${p.priceStr} | old: ${p.oldPriceStr || 'N/A'}`);
+    });
+
+    const mapped = rawProducts.map(p => {
+        const price    = parsePrice(p.priceStr);
+        const oldPrice = parsePrice(p.oldPriceStr);
+        const discount = calculateDiscount(oldPrice, price);
+
+        let finalLink = p.href;
+        try {
+            finalLink = buildAffiliateLink(p.asin, CONFIG.AFFILIATE_TAG);
+        } catch (_) {}
+
+        return {
+            title:         p.title,
+            price,
+            oldPrice,
+            discount,
+            asin:          p.asin,
+            link:          finalLink,
+            originalLink:  p.href,
+            prime:         p.prime,
+            category,
+            imageUrl:      p.imageUrl,
+            rating:        p.rating,
+            searchKeyword: keyword
+        };
+    });
+
+    const filtered = mapped.filter(p => {
+        if (!p.price || p.price < CONFIG.MIN_PRICE || p.price > CONFIG.MAX_PRICE) return false;
+        if (CONFIG.REQUIRE_PRIME && !p.prime) return false;
+        const lower = p.title.toLowerCase();
+        return !BLOCKED_KEYWORDS.some(kw => lower.includes(kw));
+    });
+
+    console.log(`   Após filtros: ${filtered.length} produto(s)`);
+
+    const scored = filtered
+        .map(p => ({ ...p, score: calculateProductScore(p) }))
+        .filter(p => p.score >= CONFIG.MIN_PRODUCT_SCORE)
+        .sort((a, b) => b.score - a.score);
+
+    // Retorna os top 8 candidatos para a verificação escolher o melhor
+    return scored.slice(0, 8);
+}
+
+// ─────────────────────────────────────────────
+// ✅ VERIFICAR PREÇO NA PÁGINA DO PRODUTO
+// ─────────────────────────────────────────────
+async function verifyProductPrice(page, product) {
+    try {
+        const productUrl = product.originalLink || product.link.split('?')[0];
+        console.log(`      🔗 Verificando: ${productUrl.substring(0, 80)}...`);
+
+        await page.goto(productUrl, { waitUntil: 'domcontentloaded', timeout: 30000 });
+        await new Promise(r => setTimeout(r, 2000 + Math.random() * 1000));
+
+        const extracted = await page.evaluate(() => {
+            const currentSelectors = [
+                '.priceToPay .a-price-whole',
+                '.reinventPricePriceToPayMargin .a-price-whole',
+                '[data-feature-name="corePriceDisplay"] .a-price-whole',
+                '#corePriceDisplay_desktop_feature_div .a-price-whole',
+                '#corePrice_feature_div .a-price-whole'
+            ];
+            const fractionSelectors = [
+                '.priceToPay .a-price-fraction',
+                '.reinventPricePriceToPayMargin .a-price-fraction',
+                '[data-feature-name="corePriceDisplay"] .a-price-fraction'
+            ];
+
+            let wholeEl = null, fractionEl = null;
+            for (const sel of currentSelectors) {
+                wholeEl = document.querySelector(sel);
+                if (wholeEl) break;
+            }
+            for (const sel of fractionSelectors) {
+                fractionEl = document.querySelector(sel);
+                if (fractionEl) break;
+            }
+
+            let currentPrice = null;
+            if (wholeEl) {
+                const whole    = wholeEl.textContent.replace(/[^\d]/g, '');
+                const fraction = fractionEl ? fractionEl.textContent.replace(/[^\d]/g, '') : '00';
+                currentPrice   = `${whole},${fraction}`;
+            }
+
+            const oldSelectors = [
+                '.basisPrice .a-price[data-a-strike="true"] .a-offscreen',
+                '[data-a-strike="true"] .a-offscreen',
+                '.basisPrice .a-text-price',
+                '.a-price.a-text-price[data-a-strike="true"]'
+            ];
+            let oldPrice = null;
+            for (const sel of oldSelectors) {
+                const el = document.querySelector(sel);
+                if (el) {
+                    const match = (el.textContent || el.innerText).match(/R\$\s?(\d+[\.,]\d{2})/);
+                    if (match) { oldPrice = match[1].replace('.', ','); break; }
+                }
+            }
+
+            return { currentPrice, oldPrice };
+        });
+
+        const verifiedPrice    = parsePrice(extracted.currentPrice);
+        const verifiedOldPrice = parsePrice(extracted.oldPrice);
+
+        console.log(`      💰 Preço na página: R$ ${verifiedPrice || 'NÃO ENCONTRADO'}`);
+
+        if (!verifiedPrice) return { verified: false };
+
+        const diff = Math.abs(verifiedPrice - product.price);
+        console.log(`      📊 Busca: R$ ${product.price?.toFixed(2)} | Página: R$ ${verifiedPrice.toFixed(2)} | Diff: R$ ${diff.toFixed(2)}`);
+
+        if (diff > CONFIG.PRICE_TOLERANCE) {
+            console.log(`      ⚠️  Preço não bate! (tolerância: R$ ${CONFIG.PRICE_TOLERANCE})`);
+            return { verified: false };
+        }
+
+        return { verified: true, currentPrice: verifiedPrice, oldPrice: verifiedOldPrice || product.oldPrice };
+    } catch (err) {
+        console.log(`      ❌ Erro ao verificar: ${err.message}`);
+        return { verified: false };
+    }
+}
+
+// ─────────────────────────────────────────────
+// 🔎 BUSCAR + VERIFICAR UM ÚNICO SLOT
+// Tenta uma keyword; se não houver produto aprovado, retorna null.
+// ─────────────────────────────────────────────
+async function findOneProduct(page, keyword, category) {
+    let candidates = [];
+    try {
+        candidates = await searchAmazon(page, keyword, category);
+    } catch (err) {
+        console.error(`❌ Erro na busca de "${keyword}":`, err.message);
+        return null;
+    }
+
+    if (candidates.length === 0) {
+        console.log(`   ⚠️  Sem candidatos para "${keyword}"`);
+        return null;
+    }
+
+    if (!CONFIG.VERIFY_PRICES) {
+        // Sem verificação: retorna direto o melhor
+        return candidates[0];
+    }
+
+    // Verificação de preços — retorna o PRIMEIRO aprovado
+    console.log(`\n🔍 Verificando preços para "${keyword}" (${candidates.length} candidato(s))...`);
+    for (let i = 0; i < candidates.length; i++) {
+        const p = candidates[i];
+        console.log(`\n   [${i + 1}/${candidates.length}] ${p.title.substring(0, 60)}...`);
+        const result = await verifyProductPrice(page, p);
+
+        if (result.verified) {
+            p.verifiedPrice    = result.currentPrice;
+            p.verifiedOldPrice = result.oldPrice;
+            console.log(`      ✅ APROVADO`);
+            return p; // Achou um bom — não precisa verificar os outros
+        } else {
+            console.log(`      ❌ REPROVADO`);
+        }
+
+        // Delay entre verificações (exceto após o último)
+        if (i < candidates.length - 1) {
+            await new Promise(r => setTimeout(r, CONFIG.DELAY_BETWEEN_VERIFICATIONS));
+        }
+    }
+
+    console.log(`   ⚠️  Nenhum candidato aprovado para "${keyword}"`);
+    return null;
+}
+
+// ─────────────────────────────────────────────
+// 🚀 FUNÇÃO PRINCIPAL
+// ─────────────────────────────────────────────
+async function scrapeBySearch(page) {
+    console.log('\n' + '='.repeat(70));
+    console.log('🎯 BUSCA POR CATEGORIA — COLETANDO 4 PRODUTOS');
+    console.log('='.repeat(70));
+
+    // Inicializa deduplicação uma vez
     if (!isDeduplicationInitialized) {
         try {
             await dedup.initialize();
             isDeduplicationInitialized = true;
-        } catch (error) {
-            console.warn('⚠️  Sistema anti-repetição não disponível:', error.message);
-            console.log('   Continuando sem controle de duplicatas...');
+        } catch (err) {
+            console.warn('⚠️  Anti-repetição indisponível:', err.message);
         }
     }
-    
-    const selectedCategories = selectRandomCategories(CONFIG.CATEGORIES_PER_EXECUTION);
-    const allProducts = [];
-    
-    console.log("\n📋 Categorias selecionadas:");
-    selectedCategories.forEach((cat, idx) => {
-        console.log(`   ${idx + 1}. ${cat.name}`);
-    });
-    console.log("");
-    
-    for (let i = 0; i < selectedCategories.length; i++) {
-        const category = selectedCategories[i];
-        
-        console.log("\n" + "─".repeat(70));
-        console.log(`📂 CATEGORIA ${i + 1}/${selectedCategories.length}: ${category.name.toUpperCase()}`);
-        console.log("─".repeat(70));
-        
-        try {
-            const products = await scrapeSingleCategory(page, category);
-            
-            if (products.length > 0) {
-                console.log(`✅ ${products.length} produtos coletados de ${category.name}`);
-                allProducts.push(...products);
-            } else {
-                console.log(`⚠️  Nenhum produto qualificado em ${category.name}`);
-            }
-            
-            // Delay entre categorias (exceto na última)
-            if (i < selectedCategories.length - 1) {
-                const delay = CONFIG.DELAY_BETWEEN_CATEGORIES;
-                console.log(`\n⏳ Aguardando ${delay / 1000}s antes da próxima categoria...`);
-                await new Promise(r => setTimeout(r, delay));
-            }
-            
-        } catch (error) {
-            console.error(`❌ Erro ao processar categoria ${category.name}:`, error.message);
-            // Continua para a próxima categoria
+
+    // ── 1. Sorteia UMA categoria para toda a execução ──────────────────
+    const category = pickRandomCategory();
+    console.log(`\n🗂️  Categoria sorteada: ${category}`);
+
+    // ── 2. Embaralha os produtos da categoria ──────────────────────────
+    const keywordPool = shuffleProducts(category);
+    console.log(`   ${keywordPool.length} keywords disponíveis na categoria`);
+
+    // ── 3. Coleta até PRODUCTS_PER_RUN produtos ────────────────────────
+    const finalProducts = [];
+    const usedAsins     = new Set(); // evita duplicar o mesmo produto
+
+    for (const keyword of keywordPool) {
+        if (finalProducts.length >= CONFIG.PRODUCTS_PER_RUN) break;
+
+        const slot = finalProducts.length + 1;
+        console.log(`\n${'─'.repeat(70)}`);
+        console.log(`📦 Slot ${slot}/${CONFIG.PRODUCTS_PER_RUN} — testando keyword: "${keyword}"`);
+
+        const product = await findOneProduct(page, keyword, category);
+
+        if (!product) continue; // keyword sem resultado — tenta a próxima
+
+        // Evita ASIN duplicado dentro da mesma execução
+        if (usedAsins.has(product.asin)) {
+            console.log(`   ⚠️  ASIN ${product.asin} já coletado — pulando`);
+            continue;
         }
-    }
-    
-    console.log("\n" + "=".repeat(70));
-    console.log(`🎉 BUSCA CONCLUÍDA`);
-    console.log("=".repeat(70));
-    console.log(`📦 Total de produtos coletados: ${allProducts.length}`);
-    console.log(`📊 Distribuição:`);
-    
-    selectedCategories.forEach(cat => {
-        const count = allProducts.filter(p => p.category === cat.name).length;
-        console.log(`   • ${cat.name}: ${count} produtos`);
-    });
-    
-    // ✅ FILTRAR PRODUTOS JÁ ENVIADOS (ANTES DE RETORNAR)
-    let finalProducts = allProducts;
-    
-    if (isDeduplicationInitialized) {
-        try {
-            console.log("\n🔍 Verificando duplicatas...");
-            finalProducts = await dedup.filterNewProducts(allProducts);
-            
-            const removed = allProducts.length - finalProducts.length;
-            if (removed > 0) {
-                console.log(`✂️  ${removed} produto(s) removido(s) (já enviados anteriormente)`);
-                console.log(`✨ ${finalProducts.length} produto(s) são novos e únicos`);
-            } else {
-                console.log(`✅ Todos os ${finalProducts.length} produtos são novos!`);
+
+        // Deduplicação global (banco de dados)
+        if (isDeduplicationInitialized) {
+            try {
+                const fresh = await dedup.filterNewProducts([product]);
+                if (fresh.length === 0) {
+                    console.log(`   ⚠️  Produto já enviado anteriormente — pulando`);
+                    continue;
+                }
+            } catch (err) {
+                console.warn('⚠️  Erro na deduplicação:', err.message);
             }
-        } catch (error) {
-            console.warn('⚠️  Erro ao verificar duplicatas:', error.message);
-            console.log('   Retornando todos os produtos...');
         }
+
+        usedAsins.add(product.asin);
+        finalProducts.push(product);
+        console.log(`   ✅ Slot ${slot} preenchido: ${product.title.substring(0, 55)}...`);
+        console.log(`      R$ ${product.price?.toFixed(2)} | ${product.discount}% OFF | Score: ${product.score} | ⭐ ${product.rating || 'N/A'}`);
     }
-    
-    console.log("=".repeat(70) + "\n");
-    
+
+    // ── 4. Resultado final ─────────────────────────────────────────────
+    console.log('\n' + '='.repeat(70));
+    if (finalProducts.length === 0) {
+        console.log(`😔 Nenhum produto encontrado na categoria "${category}"`);
+    } else {
+        console.log(`🎉 ${finalProducts.length}/${CONFIG.PRODUCTS_PER_RUN} produto(s) coletados — categoria: ${category}`);
+        finalProducts.forEach((p, i) => {
+            console.log(`   ${i + 1}. ${p.title.substring(0, 55)}...`);
+            console.log(`      R$ ${p.price?.toFixed(2)} | ${p.discount}% OFF | Score: ${p.score} | ASIN: ${p.asin}`);
+        });
+    }
+    console.log('='.repeat(70) + '\n');
+
     return finalProducts;
 }
 
-/**
- * 🔥 Processar uma única categoria
- */
-async function scrapeSingleCategory(page, category) {
-    console.log(`🔗 URL: ${category.url}`);
-    
-    await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36');
-    await page.goto(category.url, { waitUntil: 'networkidle2', timeout: 60000 });
-
-    // Delay aleatório
-    await new Promise(r => setTimeout(r, 2000 + Math.random() * 3000));
-
-    // Rolar a página para carregar conteúdo dinâmico
-    await autoScroll(page);
-    
-    // Esperar um pouco mais para o React renderizar
-    await new Promise(r => setTimeout(r, 5000));
-
-    const products = await page.evaluate(() => {
-        const items = [];
-        const cards = document.querySelectorAll('[data-testid="product-card"], .ProductCard-module__card_uyr_Jh7WpSkPx4iEpn4w, div[data-asin]');
-        
-        cards.forEach(card => {
-            try {
-                const titleEl = card.querySelector('p[id^="title-"] .a-truncate-full, p[id^="title-"] span');
-                const priceEl = card.querySelector('[data-testid="price-section"] .a-price-whole, .ProductCard-module__priceToPay_olAgJzVNGyj2javg2pAe .a-price-whole');
-                const fractionEl = card.querySelector('[data-testid="price-section"] .a-price-fraction, .ProductCard-module__priceToPay_olAgJzVNGyj2javg2pAe .a-price-fraction');
-                const oldPriceEl = card.querySelector('[data-a-strike="true"], .ProductCard-module__wrapPrice__sMO92NjAjHmGPn3jnIH .a-text-price');
-                const linkEl = card.querySelector('a[data-testid="product-card-link"], a[href*="/dp/"]');
-                const primeEl = card.querySelector('.a-icon-prime, [aria-label*="Prime"]');
-                
-                // 🖼️ CAPTURAR IMAGEM DO PRODUTO
-                const imageEl = card.querySelector('img.a-amazon-image, img[class*="ProductCardImage"]');
-                let imageUrl = null;
-                
-                if (imageEl) {
-                    imageUrl = imageEl.src || 
-                               imageEl.getAttribute('data-src') || 
-                               imageEl.srcset?.split(',')[0]?.trim()?.split(' ')[0];
-                    
-                    if (imageUrl) {
-                        imageUrl = imageUrl
-                            .replace(/SF\d+,\d+/g, 'SF500,500')
-                            .replace(/QL\d+/g, 'QL85');
-                    }
-                }
-
-                if (titleEl && linkEl) {
-                    let priceText = "";
-                    if (priceEl) {
-                        const wholePrice = priceEl.innerText.replace(',', '');
-                        priceText = wholePrice + (fractionEl ? ',' + fractionEl.innerText : ',00');
-                    } else {
-                        const match = card.innerText.match(/R\$\s?(\d+[\.,]\d{2})/);
-                        if (match) priceText = match[1].replace('.', ',');
-                    }
-
-                    if (priceText && 
-                        priceText.length > 0 && 
-                        !priceText.toLowerCase().includes('não disponível') &&
-                        !priceText.toLowerCase().includes('indisponível')) {
-                        
-                        items.push({
-                            title: titleEl.innerText.trim(),
-                            priceStr: priceText,
-                            oldPriceStr: oldPriceEl ? oldPriceEl.innerText.trim() : null,
-                            link: linkEl.href,
-                            prime: !!primeEl,
-                            imageUrl: imageUrl
-                        });
-                    }
-                }
-            } catch (e) {
-                // Ignora erros individuais
-            }
-        });
-        
-        return items;
-    });
-
-    console.log(`📦 ${products.length} produtos extraídos da página`);
-
-    const mappedProducts = products.map(p => {
-        const price = parsePrice(p.priceStr);
-        const oldPrice = parsePrice(p.oldPriceStr);
-        const discount = calculateDiscount(oldPrice, price);
-        const asin = extractAsin(p.link);
-
-        let finalLink = p.link;
-        if (asin) {
-            try {
-                finalLink = buildAffiliateLink(asin, CONFIG.AFFILIATE_TAG);
-            } catch (error) {
-                console.warn(`⚠️ Erro ao gerar link afiliado para ASIN ${asin}`);
-            }
-        }
-
-        return {
-            title: p.title,
-            price,
-            oldPrice,
-            discount,
-            asin,
-            link: finalLink,
-            originalLink: p.link, // ✅ GUARDAR LINK ORIGINAL
-            prime: p.prime,
-            category: category.name,
-            imageUrl: p.imageUrl
-        };
-    });
-
-    // ✅ FILTROS RÍGIDOS
-    console.log(`🔍 Aplicando filtros...`);
-    
-    const filteredProducts = mappedProducts.filter(p => {
-        if (p.price < CONFIG.MIN_PRICE || p.price > CONFIG.MAX_PRICE) return false;
-        if (!p.discount || p.discount < CONFIG.MIN_DISCOUNT) return false;
-        if (CONFIG.REQUIRE_PRIME && !p.prime) return false;
-        
-        const titleLower = p.title.toLowerCase();
-        for (const keyword of BLOCKED_KEYWORDS) {
-            if (titleLower.includes(keyword)) return false;
-        }
-        
-        return true;
-    });
-    
-    console.log(`   Produtos originais: ${mappedProducts.length}`);
-    console.log(`   Após filtros: ${filteredProducts.length}`);
-
-    // ✅ CALCULAR SCORE E ORDENAR
-    const productsWithScore = filteredProducts.map(p => ({
-        ...p,
-        score: calculateProductScore(p)
-    })).filter(p => p.score >= CONFIG.MIN_PRODUCT_SCORE);
-    
-    const sortedProducts = productsWithScore.sort((a, b) => b.score - a.score);
-    
-    console.log(`📊 Produtos qualificados (score >= ${CONFIG.MIN_PRODUCT_SCORE}): ${sortedProducts.length}`);
-
-    // ✅ SELECIONAR OS MELHORES
-    let topProducts = sortedProducts.slice(0, CONFIG.PRODUCTS_PER_CATEGORY);
-    
-    // 🔥 VERIFICAR PREÇOS CLICANDO NO PRODUTO
-    if (CONFIG.VERIFY_PRICES && topProducts.length > 0) {
-        console.log(`\n🔍 Verificando preços clicando nos produtos...`);
-        
-        const verifiedProducts = [];
-        
-        for (let i = 0; i < topProducts.length; i++) {
-            const product = topProducts[i];
-            console.log(`\n   [${i + 1}/${topProducts.length}] ${product.title.substring(0, 60)}...`);
-            console.log(`      💰 Preço Goldbox: R$ ${product.price.toFixed(2)}`);
-            
-            const verification = await verifyProductPriceByClicking(page, product);
-            
-            if (verification.verified) {
-                // ✅ ATUALIZAR PRODUTO COM PREÇOS VERIFICADOS
-                product.verifiedPrice = verification.currentPrice;
-                product.verifiedOldPrice = verification.oldPrice;
-                verifiedProducts.push(product);
-                console.log(`      ✅ APROVADO!`);
-            } else {
-                console.log(`      ❌ REPROVADO - Produto removido`);
-            }
-            
-            // Delay entre verificações
-            if (i < topProducts.length - 1) {
-                const delay = CONFIG.DELAY_BETWEEN_VERIFICATIONS;
-                console.log(`      ⏳ Aguardando ${delay / 1000}s...`);
-                await new Promise(r => setTimeout(r, delay));
-            }
-        }
-        
-        topProducts = verifiedProducts;
-        console.log(`\n   ✅ ${topProducts.length} produto(s) verificado(s) e aprovado(s)`);
-        
-        // 🔄 Voltar para a página da categoria
-        try {
-            console.log(`\n   🔙 Voltando para página da categoria...`);
-            await page.goto(category.url, { waitUntil: 'networkidle2', timeout: 30000 });
-            await new Promise(r => setTimeout(r, 2000));
-        } catch (error) {
-            console.warn(`   ⚠️  Erro ao voltar para categoria: ${error.message}`);
-        }
-    }
-    
-    console.log(`\n✅ Total final: ${topProducts.length} produtos`);
-    
-    if (topProducts.length > 0) {
-        console.log(`\n   📋 Produtos aprovados:`);
-        topProducts.forEach((p, idx) => {
-            console.log(`   ${idx + 1}. ${p.title.substring(0, 50)}...`);
-            console.log(`      ASIN: ${p.asin || 'N/A'} | R$ ${p.price.toFixed(2)} | ${p.discount}% OFF | Score: ${p.score}`);
-        });
-    }
-
-    return topProducts;
-}
-
-/**
- * 🔍 VERIFICAR PREÇO CLICANDO NO PRODUTO
- * ✅ Acessa o link ORIGINAL e extrai o preço REAL da página do produto
- */
-async function verifyProductPriceByClicking(page, product) {
-    try {
-        // 🔗 USAR O LINK ORIGINAL (sem tag de afiliado)
-        const productUrl = product.originalLink || product.link.split('?')[0];
-        
-        console.log(`      🔗 Acessando: ${productUrl.substring(0, 80)}...`);
-        
-        // 📄 NAVEGAR PARA A PÁGINA DO PRODUTO
-        await page.goto(productUrl, { 
-            waitUntil: 'domcontentloaded',
-            timeout: 30000 
-        });
-        
-        // ⏳ Aguardar conteúdo carregar
-        await new Promise(r => setTimeout(r, 2000 + Math.random() * 1000));
-        
-        // 💰 EXTRAIR PREÇOS DA PÁGINA DO PRODUTO
-        const extractedData = await page.evaluate(() => {
-            const result = {
-                currentPrice: null,
-                oldPrice: null,
-                priceText: null,
-                oldPriceText: null,
-                htmlSnippet: null
-            };
-            
-            // 🎯 SELETORES PARA PREÇO ATUAL (baseado no HTML que você forneceu)
-            const currentPriceSelectors = [
-                // Selector específico do HTML que você mostrou
-                '.priceToPay .a-price-whole',
-                '.reinventPricePriceToPayMargin .a-price-whole',
-                // Outros seletores comuns
-                '[data-feature-name="corePriceDisplay"] .a-price-whole',
-                '.a-price.priceToPay .a-price-whole',
-                '#corePriceDisplay_desktop_feature_div .a-price-whole',
-                '#corePrice_feature_div .a-price-whole'
-            ];
-            
-            const currentFractionSelectors = [
-                '.priceToPay .a-price-fraction',
-                '.reinventPricePriceToPayMargin .a-price-fraction',
-                '[data-feature-name="corePriceDisplay"] .a-price-fraction',
-                '.a-price.priceToPay .a-price-fraction'
-            ];
-            
-            // Buscar preço atual
-            let wholeEl = null;
-            let fractionEl = null;
-            
-            for (const selector of currentPriceSelectors) {
-                wholeEl = document.querySelector(selector);
-                if (wholeEl) {
-                    // Capturar HTML para debug
-                    const parent = wholeEl.closest('.a-price') || wholeEl.closest('div');
-                    if (parent) {
-                        result.htmlSnippet = parent.outerHTML.substring(0, 500);
-                    }
-                    break;
-                }
-            }
-            
-            for (const selector of currentFractionSelectors) {
-                fractionEl = document.querySelector(selector);
-                if (fractionEl) break;
-            }
-            
-            if (wholeEl) {
-                const whole = wholeEl.textContent.replace(/[^\d]/g, '');
-                const fraction = fractionEl ? fractionEl.textContent.replace(/[^\d]/g, '') : '00';
-                result.currentPrice = `${whole},${fraction}`;
-                result.priceText = `R$ ${whole},${fraction}`;
-            }
-            
-            // 💵 PREÇO ANTIGO (riscado)
-            const oldPriceSelectors = [
-                '.basisPrice .a-price[data-a-strike="true"] .a-offscreen',
-                '[data-a-strike="true"] .a-offscreen',
-                '.a-text-price[data-a-strike="true"]',
-                '.basisPrice .a-text-price',
-                '.a-price.a-text-price[data-a-strike="true"]'
-            ];
-            
-            for (const selector of oldPriceSelectors) {
-                const oldPriceEl = document.querySelector(selector);
-                if (oldPriceEl) {
-                    const text = oldPriceEl.textContent || oldPriceEl.innerText;
-                    const match = text.match(/R\$\s?(\d+[\.,]\d{2})/);
-                    if (match) {
-                        result.oldPrice = match[1].replace('.', ',');
-                        result.oldPriceText = text.trim();
-                        break;
-                    }
-                }
-            }
-            
-            return result;
-        });
-        
-        // 🔢 CONVERTER PARA NÚMEROS
-        const verifiedPrice = parsePrice(extractedData.currentPrice);
-        const verifiedOldPrice = parsePrice(extractedData.oldPrice);
-        
-        console.log(`      💰 Preço na página: ${extractedData.priceText || 'NÃO ENCONTRADO'}`);
-        if (extractedData.oldPriceText) {
-            console.log(`      💵 Preço antigo: ${extractedData.oldPriceText}`);
-        }
-        
-        // ❌ Falha se não conseguiu extrair o preço
-        if (!verifiedPrice || verifiedPrice === 0) {
-            console.log(`      ⚠️  Não foi possível extrair o preço da página`);
-            if (extractedData.htmlSnippet) {
-                console.log(`      🔍 HTML encontrado: ${extractedData.htmlSnippet.substring(0, 200)}...`);
-            }
-            return { verified: false };
-        }
-        
-        // ✅ COMPARAR PREÇOS
-        const priceDiff = Math.abs(verifiedPrice - product.price);
-        const priceMatches = priceDiff <= CONFIG.PRICE_TOLERANCE;
-        
-        console.log(`      📊 Comparação:`);
-        console.log(`         Goldbox: R$ ${product.price.toFixed(2)}`);
-        console.log(`         Página:  R$ ${verifiedPrice.toFixed(2)}`);
-        console.log(`         Diferença: R$ ${priceDiff.toFixed(2)}`);
-        
-        if (!priceMatches) {
-            console.log(`      ⚠️  PREÇO NÃO BATE! (tolerância: R$ ${CONFIG.PRICE_TOLERANCE})`);
-            return { 
-                verified: false,
-                currentPrice: verifiedPrice,
-                oldPrice: verifiedOldPrice
-            };
-        }
-        
-        // ✅ Verificar preço antigo (se existir)
-        if (product.oldPrice && verifiedOldPrice && verifiedOldPrice > 0) {
-            const oldPriceDiff = Math.abs(verifiedOldPrice - product.oldPrice);
-            const oldPriceMatches = oldPriceDiff <= CONFIG.PRICE_TOLERANCE;
-            
-            if (!oldPriceMatches) {
-                console.log(`      ⚠️  Preço antigo não bate (diff: R$ ${oldPriceDiff.toFixed(2)})`);
-                // Não bloqueia, só avisa
-            }
-        }
-        
-        return {
-            verified: true,
-            currentPrice: verifiedPrice,
-            oldPrice: verifiedOldPrice || product.oldPrice
-        };
-        
-    } catch (error) {
-        console.log(`      ❌ Erro ao verificar: ${error.message}`);
-        return { 
-            verified: false,
-            error: error.message 
-        };
-    }
-}
-
-/**
- * ✅ CALCULAR SCORE DO PRODUTO (0-100)
- */
-function calculateProductScore(product) {
-    let score = 0;
-    
-    // Desconto (0-50 pontos)
-    if (product.discount >= 50) score += 50;
-    else if (product.discount >= 40) score += 40;
-    else if (product.discount >= 30) score += 30;
-    else score += product.discount * 0.6;
-    
-    // Prime (+20 pontos)
-    if (product.prime) score += 20;
-    
-    // Faixa de preço ideal (0-30 pontos)
-    if (product.price >= 50 && product.price <= 500) score += 30;
-    else if (product.price >= 30 && product.price <= 800) score += 20;
-    else score += 10;
-    
-    return Math.round(score);
-}
-
-async function autoScroll(page) {
-    await page.evaluate(async () => {
-        await new Promise((resolve) => {
-            let totalHeight = 0;
-            let distance = 100;
-            let timer = setInterval(() => {
-                let scrollHeight = document.body.scrollHeight;
-                window.scrollBy(0, distance);
-                totalHeight += distance;
-                if (totalHeight >= scrollHeight || totalHeight > 8000) {
-                    clearInterval(timer);
-                    resolve();
-                }
-            }, 100);
-        });
-    });
-}
-
-module.exports = { 
-    scrapeGoldbox,
-    CATEGORIES
+// ─────────────────────────────────────────────
+// 📦 EXPORTAÇÕES
+// ─────────────────────────────────────────────
+module.exports = {
+    scrapeGoldbox: scrapeBySearch,
+    SEARCH_CATALOG,
+    pickRandomCategory,
+    shuffleProducts
 };

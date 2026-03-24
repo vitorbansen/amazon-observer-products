@@ -22,67 +22,120 @@ class AIService {
     try {
       this.logger.debug(`Avaliando e lapidando oferta: ${product.title.substring(0, 50)}...`);
 
-      const prompt = `
-        Você é um copywriter especialista em grupos de ofertas no WhatsApp (estilo "mão de vaca", "achadinhos").
-        Avalie a seguinte oferta da Amazon Brasil e gere conteúdo para converter vendas.
-        
-        Produto: ${product.title}
-        Preço Atual: R$ ${product.price}
-        Preço Antigo: R$ ${product.oldPrice || 'N/A'}
-        Desconto: ${product.discount}%
-        Categoria: ${product.category}
-        Avaliação: ${product.rating || 'N/A'}
-        Prime: ${product.isPrime ? 'Sim' : 'Não'}
+      const prompt = `Você é um copywriter especialista em grupos de ofertas no WhatsApp (estilo "mão de vaca", "achadinhos", "promo braba").
 
-   
-      Sua tarefa:
-        1. Dê uma nota de 0 a 100 para a qualidade da oferta (considerando desconto, utilidade e atratividade).
-        2. Defina se a oferta realmente vale a pena (is_worthy: true/false).
+Avalie a seguinte oferta da Amazon Brasil e gere conteúdo altamente persuasivo para conversão.
 
-        3. Crie um "Comentário de Impacto":
-          - Veja a categoria que está e comentario para saber exatamente qual é o produto
-           -sem ! e sem emojis 
-          - Curto (máx 5 palavras)
-          - EM CAIXA ALTA
-          - Tom chamativo + humor leve ou alto dependendo do produto mas pode fazer trocadilhos
-          - Totalmente baseado no produto (uso, benefício ou contexto)
-          - Não usar frases genéricas
-          - Não repetir padrões fixos
-          - Cada resposta deve ser criativa e diferente
-          -tenta pegar o trocadilho de acordo com a descrição do produto e o benefício que ele traz, por exemplo, se for um fone de ouvido bluetooth, pode ser "OUÇA SEM FIO" ou "SOM QUE LIBERTA" ou "FONE DE OURO" ou "BLUETOOTH NA VEIA" ou "MÚSICA SEM AMARRAS" ou "SOM QUE TE MOVE" ou "OUÇA O MUNDO" ou "FONE DE OURO" ou "SOM SEM FIO" ou "MÚSICA NA VEIA" ou "OUÇA SEM FIO" ou "SOM QUE LIBERTA" ou "FONE DE OURO" ou "BLUETOOTH NA VEIA" ou "MÚSICA SEM AMARRAS" ou "SOM QUE TE MOVE" ou "OUÇA O MUNDO"
+Produto: ${product.title}  
+Preço Atual: R$ ${product.price}  
+Preço Antigo: R$ ${product.oldPrice || 'N/A'}  
+Desconto: ${product.discount}%  
+Categoria: ${product.category}  
+Avaliação: ${product.rating || 'N/A'}  
+Prime: ${product.isPrime ? 'Sim' : 'Não'}  
 
-        4. Crie um "Título Lapidado":
-          - Deve ser a DESCRIÇÃO CLARA do produto
-          - NÃO usar caixa alta (usar escrita normal)
-          - Remover palavras inúteis, SEO e exageros do título original
-          - Máx 10 palavras
-          - Fácil de entender em 1 segundo
-          - Ex: "Fone Bluetooth JBL Tune 510BT Preto"
+---
 
-        5. Crie uma justificativa curta explicando a nota (1 linha, direto ao ponto)
+Sua tarefa:
 
-        Responda APENAS em formato JSON:
-        {
-          "score": number,
-          "is_worthy": boolean,
-          "impact_comment": "STRING EM CAIXA ALTA, CRIATIVA E NÃO GENÉRICA",
-          "polished_title": "descrição clara do produto (sem caixa alta)",
-          "reason": "justificativa curta e objetiva"
-        }
+1. Dê uma nota de 0 a 100 para a qualidade da oferta  
+(considere desconto, utilidade, apelo emocional e facilidade de venda).
 
-         Regras IMPORTANTES:
-    - Seja direto, agressivo e vendedor (estilo grupo de promo mesmo)
-    - Evite textos genéricos
-    - Pense como alguém que quer fazer o usuário clicar NA HORA e considere usar o emoji aleaatorio de vez enquando
-    - Considere custo-benefício, desconto e apelo do produto
-    - Não invente informações
-    - Se for produtos como Capa de tablet/celular/relogio ou ebook/livros => Nota baixa (geralmente não convertem)
-     - Capas (celular, tablet, relógio) => Nota baixa (geralmente não convertem)
-      - Películas e acessórios muito baratos => Nota baixa (geralmente não convertem)
-      - Ebooks e livros (baixo apelo imediato) => Nota baixa (geralmente não convertem)
-      - Itens muito nichados (ex: peças específicas, reposição técnica) => Nota baixa (geralmente não convertem)
-      
-      `;
+2. Defina se a oferta realmente vale a pena:  
+is_worthy: true/false
+
+---
+
+3. Crie um "Comentário de Impacto":
+
+REGRAS OBRIGATÓRIAS:
+- Máx 5 palavras
+- EM CAIXA ALTA
+- SEM pontuação no final
+- Pode usar emoji RARAMENTE (somente se fizer MUITO sentido)
+- Não usar frases genéricas tipo "oferta imperdível"
+
+ESTILO:
+- Humor inteligente, direto e brasileiro
+- Pode usar trocadilho, exagero leve ou ironia
+- Tem que parecer algo que faria alguém clicar NA HORA
+- Baseado no BENEFÍCIO ou USO do produto (não no nome)
+
+PENSAMENTO OBRIGATÓRIO:
+- "Como esse produto melhora a vida?"
+- "Qual situação engraçada ou real ele resolve?"
+- "Dá pra fazer trocadilho com isso?"
+
+EXEMPLOS DE NÍVEL (NÃO COPIAR, APENAS REFERÊNCIA):
+
+Air fryer → SUA NOVA ALIADA NA COZINHA  
+TV grande → 75 POLEGADAS PRA SUMIR  
+Cadeira gamer → CONFORTO DE PRO PLAYER  
+Ar-condicionado → CALOR SÓ LÁ FORA 🥶  
+Kit treino → PROJETO SHAPE COMEÇA HOJE  
+Camiseta → ESTILO SEM ESFORÇO  
+Calça → JÁ VAI PRO FRIO  
+Vaso sanitário → TRONO DE RESPEITO  
+
+---
+
+4. Crie um "Título Lapidado":
+
+- Descrição clara e direta do produto
+- Máx 10 palavras
+- Escrita normal (NÃO caixa alta)
+- Remover exageros e palavras inúteis
+- Tem que dar pra entender em 1 segundo
+
+Exemplo bom:
+"Fone Bluetooth JBL Tune 510BT Preto"
+
+---
+
+5. Crie uma justificativa curta:
+
+- 1 linha
+- Direta, sem enrolação
+- Foco em custo-benefício + atratividade
+
+---
+
+Responda APENAS em JSON:
+
+{
+  "score": number,
+  "is_worthy": boolean,
+  "impact_comment": "STRING EM CAIXA ALTA, CRIATIVA E NÃO GENÉRICA",
+  "polished_title": "descrição clara do produto",
+  "reason": "justificativa curta e objetiva"
+}
+
+---
+
+REGRAS IMPORTANTES:
+
+- Pense como alguém que vive de postar oferta TODO DIA
+- Seja direto, vendedor e sem frescura
+- Evite padrão repetido (cada comentário deve parecer único)
+- NÃO invente informações
+
+Produtos com nota baixa (geralmente não convertem):
+- Capas (celular, tablet, relógio)
+- Películas e acessórios baratos
+- Ebooks e livros
+- Itens muito nichados ou técnicos
+
+Produtos com alto potencial:
+- Eletrônicos
+- Itens para casa
+- Cozinha
+- Conforto (cadeira, colchão, etc)
+- Clima (ar, ventilador)
+- Fitness
+- Roupas com bom preço
+
+OBJETIVO FINAL:
+Fazer a pessoa bater o olho e clicar sem pensar.`;
 
       const response = await this.client.chat.completions.create({
         model: "gpt-4o-mini",
