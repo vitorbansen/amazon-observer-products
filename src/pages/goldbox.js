@@ -1,14 +1,7 @@
-/**
- * 🔍 SEARCH SCRAPER - Busca 4 produtos de uma categoria sorteada
- * ==============================================================
- * Sorteia UMA categoria, depois busca 4 produtos DIFERENTES dela.
- * Se um produto não tiver resultado apto, tenta outro da mesma
- * categoria até completar os 4 slots ou esgotar as opções.
- */
 
-const { parsePrice, calculateDiscount, extractAsin } = require('../extractors/extractor');
-const { buildAffiliateLink } = require('../services/amazonAffiliate.service');
-const { DeduplicationService } = require('../services/deduplication');
+const { parsePrice, calculateDiscount, extractAsin } = require("../extractors/extractor");
+const { buildAffiliateLink } = require("../services/amazonAffiliate.service");
+const { DeduplicationService } = require("../services/deduplication");
 
 // ✅ Instância global do serviço de deduplicação
 const dedup = new DeduplicationService();
@@ -25,18 +18,21 @@ const CONFIG_PROFILES = [
 const selectedProfile = CONFIG_PROFILES[Math.floor(Math.random() * CONFIG_PROFILES.length)];
 
 const CONFIG = {
-    AFFILIATE_TAG: process.env.AMAZON_AFFILIATE_TAG || 'kompreaki05-20',
+    AFFILIATE_TAG: process.env.AMAZON_AFFILIATE_TAG || "kompreaki05-20",
     ...selectedProfile,
     PRODUCTS_PER_RUN: 4,        // Quantos produtos finais queremos por execução
     MIN_PRODUCT_SCORE: 0,       // Sem filtro de score — só ordena do melhor pro pior
     VERIFY_PRICES: true,
     DELAY_BETWEEN_VERIFICATIONS: 3000,
-    PRICE_TOLERANCE: 10
+    PRICE_TOLERANCE: 10,
+    // Novo: Desconto mínimo para ser considerado "qualificado" na primeira passada
+    QUALIFIED_MIN_DISCOUNT: 20 
 };
 
 // ─────────────────────────────────────────────
 // 🗂️  MAPA DE CATEGORIAS → PRODUTOS
 // ─────────────────────────────────────────────
+
 const SEARCH_CATALOG = {
     'Casa': {
         produtos: [
@@ -624,25 +620,26 @@ const SEARCH_CATALOG = {
 
 // ✅ PALAVRAS-CHAVE BLOQUEADAS
 const BLOCKED_KEYWORDS = [
-    'livro', 'apostila', 'usado', 'reembalado', 'refil',
-    'peça de reposição', 'recarga', 'ebook', 'e-book',
-    'revista', 'jornal', 'assinatura', 'gift card', 'vale presente',
-    'curso online', 'capa case', 'capa para', 'película', 'armação'
+    "livro", "apostila", "usado", "reembalado", "refil",
+    "peça de reposição", "recarga", "ebook", "e-book",
+    "revista", "jornal", "assinatura", "gift card", "vale presente",
+    "curso online", "capa case", "capa para", "película", "armação"
 ];
 
 // ─────────────────────────────────────────────
-// 🎲 SORTEAR CATEGORIA (UMA SÓ POR EXECUÇÃO)
+// 🎲 SORTEAR CATEGORIA
 // ─────────────────────────────────────────────
-function pickRandomCategory() {
-    const categories = Object.keys(SEARCH_CATALOG);
+function pickRandomCategory(exclude = []) {
+    const categories = Object.keys(SEARCH_CATALOG).filter(c => !exclude.includes(c));
+    if (categories.length === 0) return null;
     return categories[Math.floor(Math.random() * categories.length)];
 }
 
 /**
  * Retorna uma lista embaralhada dos produtos de uma categoria.
- * Assim podemos iterar na ordem aleatória sem repetir keywords.
  */
 function shuffleProducts(category) {
+    if (!SEARCH_CATALOG[category]) return [];
     const produtos = [...SEARCH_CATALOG[category].produtos];
     for (let i = produtos.length - 1; i > 0; i--) {
         const j = Math.floor(Math.random() * (i + 1));
@@ -685,91 +682,90 @@ async function searchAmazon(page, keyword, category) {
     console.log(`\n🔍 Buscando: "${keyword}" [${category}]`);
 
     await page.setUserAgent(
-        'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 ' +
-        '(KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36'
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 " +
+        "(KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
     );
 
     const encodedKeyword = encodeURIComponent(keyword);
     const searchUrl = `https://www.amazon.com.br/s?k=${encodedKeyword}&s=price-asc-rank`;
 
-    await page.goto(searchUrl, { waitUntil: 'networkidle2', timeout: 60000 });
+    await page.goto(searchUrl, { waitUntil: "networkidle2", timeout: 60000 });
     await new Promise(r => setTimeout(r, 2000 + Math.random() * 2000));
 
     console.log(`   🔗 URL: ${searchUrl}`);
 
     const rawProducts = await page.evaluate(() => {
         const items = [];
-        const cards = document.querySelectorAll('[data-component-type="s-search-result"]');
+        const cards = document.querySelectorAll("[data-component-type=\"s-search-result\"]");
 
         cards.forEach(card => {
             try {
-                const asin = card.getAttribute('data-asin');
+                const asin = card.getAttribute("data-asin");
                 if (!asin) return;
 
-                const titleEl = card.querySelector('h2 .a-link-normal span, h2 span.a-size-medium, h2 span.a-size-base-plus, h2 span.a-size-mini, [data-cy="title-recipe"] h2 span');
+                const titleEl = card.querySelector("h2 .a-link-normal span, h2 span.a-size-medium, h2 span.a-size-base-plus, h2 span.a-size-mini, [data-cy=\"title-recipe\"] h2 span");
                 const title   = titleEl ? titleEl.innerText.trim() : null;
                 if (!title || title.length < 5) return;
 
-                const priceEl         = card.querySelector('.a-price:not(.a-text-price) .a-price-whole');
-                const priceFractionEl = card.querySelector('.a-price:not(.a-text-price) .a-price-fraction');
+                const priceEl         = card.querySelector(".a-price:not(.a-text-price) .a-price-whole");
+                const priceFractionEl = card.querySelector(".a-price:not(.a-text-price) .a-price-fraction");
                 let priceStr = null;
                 if (priceEl) {
-                    const whole    = priceEl.innerText.replace(/\D/g, '');
-                    const fraction = priceFractionEl ? priceFractionEl.innerText.replace(/\D/g, '') : '00';
+                    const whole    = priceEl.innerText.replace(/\D/g, "");
+                    const fraction = priceFractionEl ? priceFractionEl.innerText.replace(/\D/g, "") : "00";
                     priceStr = `${whole},${fraction}`;
                 }
                 if (!priceStr) {
                     const match = card.innerText.match(/R\$\s?(\d[\d.]*[\.,]\d{2})/);
-                    if (match) priceStr = match[1].replace('.', ',');
+                    if (match) priceStr = match[1].replace(".", ",");
                 }
                 if (!priceStr) return;
 
                 let oldPriceStr = null;
-                const strikeEl = card.querySelector('[data-a-strike="true"]');
+                const strikeEl = card.querySelector("[data-a-strike=\"true\"]");
                 if (strikeEl) {
-                    const visibleEl  = strikeEl.querySelector('[aria-hidden="true"]');
-                    const rawVisible = visibleEl ? (visibleEl.innerText || '') : '';
+                    const visibleEl  = strikeEl.querySelector("[aria-hidden=\"true\"]");
+                    const rawVisible = visibleEl ? (visibleEl.innerText || "") : "";
                     const matchVisible = rawVisible.match(/R\$\s?(\d[\d.]*[\.,]\d{2})/);
                     if (matchVisible) {
-                        oldPriceStr = matchVisible[1].replace('.', ',');
+                        oldPriceStr = matchVisible[1].replace(".", ",");
                     }
                     if (!oldPriceStr) {
-                        const offscreenEl = strikeEl.querySelector('.a-offscreen');
+                        const offscreenEl = strikeEl.querySelector(".a-offscreen");
                         if (offscreenEl) {
-                            const rawOffscreen = offscreenEl.innerText || '';
+                            const rawOffscreen = offscreenEl.innerText || "";
                             const matchOffscreen = rawOffscreen.match(/R\$\s?(\d[\d.]*[\.,]\d{2})/);
-                            if (matchOffscreen) oldPriceStr = matchOffscreen[1].replace('.', ',');
+                            if (matchOffscreen) oldPriceStr = matchOffscreen[1].replace(".", ",");
                         }
                     }
                     if (!oldPriceStr) {
-                        const rawStrike = strikeEl.innerText || '';
+                        const rawStrike = strikeEl.innerText || "";
                         const matchStrike = rawStrike.match(/R\$\s?(\d[\d.]*[\.,]\d{2})/);
-                        if (matchStrike) oldPriceStr = matchStrike[1].replace('.', ',');
+                        if (matchStrike) oldPriceStr = matchStrike[1].replace(".", ",");
                     }
                 } else {
-                    const oldOffscreen = card.querySelector('.a-text-price .a-offscreen');
+                    const oldOffscreen = card.querySelector(".a-text-price .a-offscreen");
                     if (oldOffscreen) {
-                        const raw   = oldOffscreen.innerText || '';
+                        const raw   = oldOffscreen.innerText || "";
                         const match = raw.match(/R\$\s?(\d[\d.]*[\.,]\d{2})/);
-                        if (match) oldPriceStr = match[1].replace('.', ',');
+                        if (match) oldPriceStr = match[1].replace(".", ",");
                     }
                 }
 
-                const linkEl = card.querySelector('h2 a.a-link-normal, a.a-link-normal[href*="/dp/"]');
+                const linkEl = card.querySelector("h2 a.a-link-normal, a.a-link-normal[href*=\"/dp/\"]");
                 const href   = linkEl ? linkEl.href : null;
                 if (!href) return;
 
-                const primeEl = card.querySelector('.a-icon-prime, [aria-label*="Prime"]');
-
-                const imgEl  = card.querySelector('img.s-image');
-                let imageUrl = imgEl ? (imgEl.src || imgEl.getAttribute('data-src')) : null;
+                const primeEl = card.querySelector(".a-icon-prime, .s-prime");
+                const imgEl  = card.querySelector("img.s-image");
+                let imageUrl = imgEl ? (imgEl.src || imgEl.getAttribute("data-src")) : null;
                 if (imageUrl) {
                     imageUrl = imageUrl
-                        .replace(/SF\d+,\d+/g, 'SF500,500')
-                        .replace(/QL\d+/g, 'QL85');
+                        .replace(/SF\d+,\d+/g, "SF500,500")
+                        .replace(/QL\d+/g, "QL85");
                 }
 
-                const ratingEl = card.querySelector('.a-icon-star-small .a-icon-alt, .a-icon-star .a-icon-alt');
+                const ratingEl = card.querySelector(".a-icon-star-small .a-icon-alt, .a-icon-star .a-icon-alt");
                 const rating   = ratingEl ? parseFloat(ratingEl.innerText) : null;
 
                 items.push({ asin, title, priceStr, oldPriceStr, href, prime: !!primeEl, imageUrl, rating });
@@ -782,12 +778,12 @@ async function searchAmazon(page, keyword, category) {
     console.log(`📦 ${rawProducts.length} produtos extraídos`);
 
     if (rawProducts.length === 0) {
-        console.warn('⚠️  Nenhum card encontrado — possível bloqueio de bot ou mudança de seletor');
+        console.warn("⚠️  Nenhum card encontrado — possível bloqueio de bot ou mudança de seletor");
         return [];
     }
 
     rawProducts.slice(0, 3).forEach((p, i) => {
-        console.log(`   [${i+1}] ${p.title?.substring(0, 50)} | R$ ${p.priceStr} | old: ${p.oldPriceStr || 'N/A'}`);
+        console.log(`   [${i+1}] ${p.title?.substring(0, 50)} | R$ ${p.priceStr} | old: ${p.oldPriceStr || "N/A"}`);
     });
 
     const mapped = rawProducts.map(p => {
@@ -839,24 +835,24 @@ async function searchAmazon(page, keyword, category) {
 // ─────────────────────────────────────────────
 async function verifyProductPrice(page, product) {
     try {
-        const productUrl = product.originalLink || product.link.split('?')[0];
+        const productUrl = product.originalLink || product.link.split("?")[0];
         console.log(`      🔗 Verificando: ${productUrl.substring(0, 80)}...`);
 
-        await page.goto(productUrl, { waitUntil: 'domcontentloaded', timeout: 30000 });
+        await page.goto(productUrl, { waitUntil: "domcontentloaded", timeout: 30000 });
         await new Promise(r => setTimeout(r, 2000 + Math.random() * 1000));
 
         const extracted = await page.evaluate(() => {
             const currentSelectors = [
-                '.priceToPay .a-price-whole',
-                '.reinventPricePriceToPayMargin .a-price-whole',
-                '[data-feature-name="corePriceDisplay"] .a-price-whole',
-                '#corePriceDisplay_desktop_feature_div .a-price-whole',
-                '#corePrice_feature_div .a-price-whole'
+                ".priceToPay .a-price-whole",
+                ".reinventPricePriceToPayMargin .a-price-whole",
+                "[data-feature-name=\"corePriceDisplay\"] .a-price-whole",
+                "#corePriceDisplay_desktop_feature_div .a-price-whole",
+                "#corePrice_feature_div .a-price-whole"
             ];
             const fractionSelectors = [
-                '.priceToPay .a-price-fraction',
-                '.reinventPricePriceToPayMargin .a-price-fraction',
-                '[data-feature-name="corePriceDisplay"] .a-price-fraction'
+                ".priceToPay .a-price-fraction",
+                ".reinventPricePriceToPayMargin .a-price-fraction",
+                "[data-feature-name=\"corePriceDisplay\"] .a-price-fraction"
             ];
 
             let wholeEl = null, fractionEl = null;
@@ -871,23 +867,23 @@ async function verifyProductPrice(page, product) {
 
             let currentPrice = null;
             if (wholeEl) {
-                const whole    = wholeEl.textContent.replace(/[^\d]/g, '');
-                const fraction = fractionEl ? fractionEl.textContent.replace(/[^\d]/g, '') : '00';
+                const whole    = wholeEl.textContent.replace(/[^\d]/g, "");
+                const fraction = fractionEl ? fractionEl.textContent.replace(/[^\d]/g, "") : "00";
                 currentPrice   = `${whole},${fraction}`;
             }
 
             const oldSelectors = [
-                '.basisPrice .a-price[data-a-strike="true"] .a-offscreen',
-                '[data-a-strike="true"] .a-offscreen',
-                '.basisPrice .a-text-price',
-                '.a-price.a-text-price[data-a-strike="true"]'
+                ".basisPrice .a-price[data-a-strike=\"true\"] .a-offscreen",
+                "[data-a-strike=\"true\"] .a-offscreen",
+                ".basisPrice .a-text-price",
+                ".a-price.a-text-price[data-a-strike=\"true\"]"
             ];
             let oldPrice = null;
             for (const sel of oldSelectors) {
                 const el = document.querySelector(sel);
                 if (el) {
                     const match = (el.textContent || el.innerText).match(/R\$\s?(\d+[\.,]\d{2})/);
-                    if (match) { oldPrice = match[1].replace('.', ','); break; }
+                    if (match) { oldPrice = match[1].replace(".", ","); break; }
                 }
             }
 
@@ -897,7 +893,7 @@ async function verifyProductPrice(page, product) {
         const verifiedPrice    = parsePrice(extracted.currentPrice);
         const verifiedOldPrice = parsePrice(extracted.oldPrice);
 
-        console.log(`      💰 Preço na página: R$ ${verifiedPrice || 'NÃO ENCONTRADO'}`);
+        console.log(`      💰 Preço na página: R$ ${verifiedPrice || "NÃO ENCONTRADO"}`);
 
         if (!verifiedPrice) return { verified: false };
 
@@ -918,9 +914,8 @@ async function verifyProductPrice(page, product) {
 
 // ─────────────────────────────────────────────
 // 🔎 BUSCAR + VERIFICAR UM ÚNICO SLOT
-// Tenta uma keyword; se não houver produto aprovado, retorna null.
 // ─────────────────────────────────────────────
-async function findOneProduct(page, keyword, category) {
+async function findOneProduct(page, keyword, category, minDiscount = 0) {
     let candidates = [];
     try {
         candidates = await searchAmazon(page, keyword, category);
@@ -934,34 +929,39 @@ async function findOneProduct(page, keyword, category) {
         return null;
     }
 
-    if (!CONFIG.VERIFY_PRICES) {
-        // Sem verificação: retorna direto o melhor
-        return candidates[0];
+    // Filtra por desconto mínimo ANTES da verificação de preço na página
+    const filteredByDiscount = candidates.filter(p => p.discount >= minDiscount);
+
+    if (filteredByDiscount.length === 0) {
+        console.log(`   ⚠️  Nenhum candidato com desconto >= ${minDiscount}% para "${keyword}"`);
+        return null;
     }
 
-    // Verificação de preços — retorna o PRIMEIRO aprovado
-    console.log(`\n🔍 Verificando preços para "${keyword}" (${candidates.length} candidato(s))...`);
-    for (let i = 0; i < candidates.length; i++) {
-        const p = candidates[i];
-        console.log(`\n   [${i + 1}/${candidates.length}] ${p.title.substring(0, 60)}...`);
+    if (!CONFIG.VERIFY_PRICES) {
+        return filteredByDiscount[0];
+    }
+
+    console.log(`\n🔍 Verificando preços para "${keyword}" (${filteredByDiscount.length} candidato(s) com >= ${minDiscount}% OFF)...`);
+    for (let i = 0; i < filteredByDiscount.length; i++) {
+        const p = filteredByDiscount[i];
+        console.log(`\n   [${i + 1}/${filteredByDiscount.length}] ${p.title.substring(0, 60)}...`);
         const result = await verifyProductPrice(page, p);
 
         if (result.verified) {
             p.verifiedPrice    = result.currentPrice;
             p.verifiedOldPrice = result.oldPrice;
             console.log(`      ✅ APROVADO`);
-            return p; // Achou um bom — não precisa verificar os outros
+            return p;
         } else {
             console.log(`      ❌ REPROVADO`);
         }
 
-        // Delay entre verificações (exceto após o último)
-        if (i < candidates.length - 1) {
+        if (i < filteredByDiscount.length - 1) {
             await new Promise(r => setTimeout(r, CONFIG.DELAY_BETWEEN_VERIFICATIONS));
         }
     }
 
-    console.log(`   ⚠️  Nenhum candidato aprovado para "${keyword}"`);
+    console.log(`   ⚠️  Nenhum candidato aprovado para "${keyword}" com desconto >= ${minDiscount}%`);
     return null;
 }
 
@@ -969,80 +969,142 @@ async function findOneProduct(page, keyword, category) {
 // 🚀 FUNÇÃO PRINCIPAL
 // ─────────────────────────────────────────────
 async function scrapeBySearch(page) {
-    console.log('\n' + '='.repeat(70));
-    console.log('🎯 BUSCA POR CATEGORIA — COLETANDO 4 PRODUTOS');
-    console.log('='.repeat(70));
+    console.log("\n" + "=".repeat(70));
+    console.log("🎯 BUSCA POR CATEGORIA — COLETANDO 4 PRODUTOS");
+    console.log("=".repeat(70));
 
-    // Inicializa deduplicação uma vez
     if (!isDeduplicationInitialized) {
         try {
             await dedup.initialize();
             isDeduplicationInitialized = true;
         } catch (err) {
-            console.warn('⚠️  Anti-repetição indisponível:', err.message);
+            console.warn("⚠️  Anti-repetição indisponível:", err.message);
         }
     }
 
-    // ── 1. Sorteia UMA categoria para toda a execução ──────────────────
-    const category = pickRandomCategory();
-    console.log(`\n🗂️  Categoria sorteada: ${category}`);
-
-    // ── 2. Embaralha os produtos da categoria ──────────────────────────
-    const keywordPool = shuffleProducts(category);
-    console.log(`   ${keywordPool.length} keywords disponíveis na categoria`);
-
-    // ── 3. Coleta até PRODUCTS_PER_RUN produtos ────────────────────────
     const finalProducts = [];
-    const usedAsins     = new Set(); // evita duplicar o mesmo produto
+    const usedAsins     = new Set();
+    const attemptedCategories = [];
 
-    for (const keyword of keywordPool) {
-        if (finalProducts.length >= CONFIG.PRODUCTS_PER_RUN) break;
-
-        const slot = finalProducts.length + 1;
-        console.log(`\n${'─'.repeat(70)}`);
-        console.log(`📦 Slot ${slot}/${CONFIG.PRODUCTS_PER_RUN} — testando keyword: "${keyword}"`);
-
-        const product = await findOneProduct(page, keyword, category);
-
-        if (!product) continue; // keyword sem resultado — tenta a próxima
-
-        // Evita ASIN duplicado dentro da mesma execução
-        if (usedAsins.has(product.asin)) {
-            console.log(`   ⚠️  ASIN ${product.asin} já coletado — pulando`);
-            continue;
+    // Loop principal para garantir que atingimos o objetivo de PRODUCTS_PER_RUN
+    while (finalProducts.length < CONFIG.PRODUCTS_PER_RUN) {
+        // ── 1. Sorteia uma categoria que ainda não foi tentada ───────────
+        const currentCategory = pickRandomCategory(attemptedCategories);
+        
+        if (!currentCategory) {
+            console.warn("⚠️  Todas as categorias do catálogo foram esgotadas e não atingimos 4 produtos.");
+            break;
         }
 
-        // Deduplicação global (banco de dados)
-        if (isDeduplicationInitialized) {
-            try {
-                const fresh = await dedup.filterNewProducts([product]);
-                if (fresh.length === 0) {
-                    console.log(`   ⚠️  Produto já enviado anteriormente — pulando`);
-                    continue;
+        attemptedCategories.push(currentCategory);
+        console.log(`\n🗂️  Categoria selecionada: ${currentCategory}`);
+
+        // ── 2. Embaralha os produtos da categoria ──────────────────────────
+        const keywordPool = shuffleProducts(currentCategory);
+        console.log(`   ${keywordPool.length} keywords disponíveis na categoria`);
+
+        const qualifiedProductsFromCategory = [];
+        const otherProductsFromCategory = [];
+
+        // --- PRIMEIRA PASSADA: Busca produtos QUALIFICADOS (com desconto >= QUALIFIED_MIN_DISCOUNT) na categoria atual ---
+        console.log(`\n⭐ Buscando produtos QUALIFICADOS (>= ${CONFIG.QUALIFIED_MIN_DISCOUNT}% OFF) na categoria "${currentCategory}"...`);
+        for (const keyword of keywordPool) {
+            if (qualifiedProductsFromCategory.length + finalProducts.length >= CONFIG.PRODUCTS_PER_RUN) break; // Já temos o suficiente ou estamos perto
+
+            const product = await findOneProduct(page, keyword, currentCategory, CONFIG.QUALIFIED_MIN_DISCOUNT);
+
+            if (product) {
+                if (!usedAsins.has(product.asin)) {
+                    if (isDeduplicationInitialized) {
+                        try {
+                            const fresh = await dedup.filterNewProducts([product]);
+                            if (fresh.length > 0) {
+                                qualifiedProductsFromCategory.push(product);
+                                usedAsins.add(product.asin);
+                                console.log(`   ✅ Qualificado adicionado: ${product.title.substring(0, 55)}...`);
+                            } else {
+                                console.log(`   ⚠️  Produto qualificado já enviado anteriormente (deduplicação global) — pulando`);
+                            }
+                        } catch (err) {
+                            console.warn("⚠️  Erro na deduplicação de qualificado:", err.message);
+                            qualifiedProductsFromCategory.push(product); // Adiciona mesmo com erro de dedup para não perder
+                            usedAsins.add(product.asin);
+                        }
+                    } else {
+                        qualifiedProductsFromCategory.push(product);
+                        usedAsins.add(product.asin);
+                        console.log(`   ✅ Qualificado adicionado: ${product.title.substring(0, 55)}...`);
+                    }
+                } else {
+                    console.log(`   ⚠️  ASIN ${product.asin} já coletado nesta execução (qualificado) — pulando`);
                 }
-            } catch (err) {
-                console.warn('⚠️  Erro na deduplicação:', err.message);
             }
         }
 
-        usedAsins.add(product.asin);
-        finalProducts.push(product);
-        console.log(`   ✅ Slot ${slot} preenchido: ${product.title.substring(0, 55)}...`);
-        console.log(`      R$ ${product.price?.toFixed(2)} | ${product.discount}% OFF | Score: ${product.score} | ⭐ ${product.rating || 'N/A'}`);
+        // Adiciona os produtos qualificados encontrados nesta categoria aos produtos finais
+        finalProducts.push(...qualifiedProductsFromCategory);
+        console.log(`   Total de produtos qualificados até agora: ${finalProducts.length}/${CONFIG.PRODUCTS_PER_RUN}`);
+
+        // --- SEGUNDA PASSADA: Se ainda faltam produtos, busca o restante (sem filtro de desconto) na MESMA categoria ---
+        if (finalProducts.length < CONFIG.PRODUCTS_PER_RUN) {
+            console.log(`\n⏳ Faltam ${CONFIG.PRODUCTS_PER_RUN - finalProducts.length} produtos. Buscando o restante na categoria "${currentCategory}" (sem filtro de desconto)...`);
+            for (const keyword of keywordPool) {
+                if (finalProducts.length >= CONFIG.PRODUCTS_PER_RUN) break;
+
+                // Verifica se o produto já foi adicionado como qualificado
+                const existingQualified = qualifiedProductsFromCategory.find(p => p.searchKeyword === keyword);
+                if (existingQualified) {
+                    continue; // Já pegamos este produto na primeira passada
+                }
+
+                const product = await findOneProduct(page, keyword, currentCategory, 0); // minDiscount = 0 para relaxar o critério
+
+                if (product) {
+                    if (!usedAsins.has(product.asin)) {
+                        if (isDeduplicationInitialized) {
+                            try {
+                                const fresh = await dedup.filterNewProducts([product]);
+                                if (fresh.length > 0) {
+                                    finalProducts.push(product);
+                                    usedAsins.add(product.asin);
+                                    console.log(`   ➕ Complementar adicionado: ${product.title.substring(0, 55)}...`);
+                                } else {
+                                    console.log(`   ⚠️  Produto complementar já enviado anteriormente (deduplicação global) — pulando`);
+                                }
+                            } catch (err) {
+                                console.warn("⚠️  Erro na deduplicação de complementar:", err.message);
+                                finalProducts.push(product); // Adiciona mesmo com erro de dedup para não perder
+                                usedAsins.add(product.asin);
+                            }
+                        } else {
+                            finalProducts.push(product);
+                            usedAsins.add(product.asin);
+                            console.log(`   ➕ Complementar adicionado: ${product.title.substring(0, 55)}...`);
+                        }
+                    } else {
+                        console.log(`   ⚠️  ASIN ${product.asin} já coletado nesta execução (complementar) — pulando`);
+                    }
+                }
+            }
+        }
+
+        if (finalProducts.length < CONFIG.PRODUCTS_PER_RUN) {
+            console.log(`\n⚠️  Categoria "${currentCategory}" esgotada com ${finalProducts.length} produto(s). Buscando próxima categoria...`);
+        }
     }
 
     // ── 4. Resultado final ─────────────────────────────────────────────
-    console.log('\n' + '='.repeat(70));
+    console.log("\n" + "=".repeat(70));
     if (finalProducts.length === 0) {
-        console.log(`😔 Nenhum produto encontrado na categoria "${category}"`);
+        console.log(`😔 Nenhum produto encontrado em nenhuma categoria.`);
     } else {
-        console.log(`🎉 ${finalProducts.length}/${CONFIG.PRODUCTS_PER_RUN} produto(s) coletados — categoria: ${category}`);
+        console.log(`🎉 ${finalProducts.length}/${CONFIG.PRODUCTS_PER_RUN} produto(s) coletados com sucesso.`);
         finalProducts.forEach((p, i) => {
-            console.log(`   ${i + 1}. ${p.title.substring(0, 55)}...`);
-            console.log(`      R$ ${p.price?.toFixed(2)} | ${p.discount}% OFF | Score: ${p.score} | ASIN: ${p.asin}`);
+            console.log(`   ${i + 1}. [${p.category}] ${p.title.substring(0, 55)}...`);
+            console.log(`      R$ ${p.price?.toFixed(2)} | ${p.discount}% OFF | ASIN: ${p.asin}`);
         });
     }
-    console.log('='.repeat(70) + '\n');
+    console.log("=".repeat(70) + "\n");
 
     return finalProducts;
 }
