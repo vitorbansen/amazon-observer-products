@@ -10,6 +10,9 @@ const { DeduplicationService } = require('./services/deduplication');
 const dedup = new DeduplicationService();
 let isInitialized = false;
 
+// 🔒 Trava para evitar execuções paralelas
+let isRunning = false;
+
 /**
  * 🤖 Função principal que executa o scraper
  * Busca 3 categorias aleatórias x 5 produtos = 15 ofertas por execução
@@ -47,23 +50,23 @@ async function executeObserver() {
         if (filteredOffers.length > 0) {
             await saveOffers(filteredOffers);
             console.log('💾 Ofertas salvas no banco de dados');
-            
+
             if (process.env.WHATSAPP_GROUP_ID) {
                 const bot = new AmazonDealsBot();
                 await bot.sendDealsToGroup(filteredOffers);
                 console.log('✅ Enviado para WhatsApp!');
-                
+
                 // ✅ REGISTRAR PRODUTOS COMO ENVIADOS
                 await dedup.markAsSent(filteredOffers);
             }
-            
+
             // 📊 Mostrar estatísticas do histórico
             const stats = await dedup.getStats();
             console.log('\n📊 Estatísticas do Histórico:');
             console.log(`   • Produtos no histórico: ${stats.total}/100`);
             console.log(`   • Categorias diferentes: ${stats.categories}`);
             console.log(`   • Desconto médio histórico: ${stats.avg_discount?.toFixed(1)}%`);
-            
+
         } else {
             console.log("ℹ️  Nenhuma oferta qualificada encontrada nesta execução.");
         }
@@ -85,7 +88,7 @@ async function executeObserver() {
 
 /**
  * ⏰ CONFIGURAÇÃO: 8 EXECUÇÕES POR DIA
- * 
+ *
  * Distribuição:
  * - 09:00 (Manhã cedo)
  * - 11:00 (Meio da manhã)
@@ -95,18 +98,44 @@ async function executeObserver() {
  * - 19:00 (Início da noite)
  * - 21:00 (Meio da noite)
  * - 23:00 (Final da noite)
- * 
+ *
  * Total: 8 execuções x ~15 ofertas = ~120 mensagens/dia
  * ✅ SEM REPETIÇÃO dos últimos 100 produtos
  */
 
-// 1️
-cron.schedule('0 0 9-23/2 * * *', () => {
-    console.log('⏰ AGENDAMENTO: a cada 2 horas a partir das 09:00');
-    executeObserver();
-}, {
-    scheduled: true,
-    timezone: "America/Sao_Paulo"
+// ✅ Um cron por horário (evita problema com range + step no node-cron)
+// ✅ async/await no callback para evitar execuções paralelas
+const horarios = [
+    { hora: '0 9',  label: '1️⃣  09:00 - Manhã cedo'       },
+    { hora: '0 11', label: '2️⃣  11:00 - Meio da manhã'     },
+    { hora: '0 13', label: '3️⃣  13:00 - Início da tarde'   },
+    { hora: '0 15', label: '4️⃣  15:00 - Meio da tarde'     },
+    { hora: '0 17', label: '5️⃣  17:00 - Final da tarde'    },
+    { hora: '0 19', label: '6️⃣  19:00 - Início da noite'   },
+    { hora: '0 21', label: '7️⃣  21:00 - Meio da noite'     },
+    { hora: '0 23', label: '8️⃣  23:00 - Final da noite'    },
+];
+
+horarios.forEach(({ hora, label }) => {
+    cron.schedule(`0 ${hora} * * *`, async () => {
+        console.log(`\n⏰ AGENDAMENTO DISPARADO: ${label}`);
+
+        // 🔒 Evita execuções paralelas caso uma ainda esteja rodando
+        if (isRunning) {
+            console.log('⚠️  Execução anterior ainda em andamento, pulando este horário...');
+            return;
+        }
+
+        isRunning = true;
+        try {
+            await executeObserver();
+        } finally {
+            isRunning = false;
+        }
+    }, {
+        scheduled: true,
+        timezone: "America/Sao_Paulo"
+    });
 });
 
 
@@ -122,18 +151,12 @@ console.log('   • Total de mensagens/dia: ~120');
 console.log('   • 🛡️  Controle anti-repetição: últimos 100 produtos');
 console.log('');
 console.log('📅 Horários configurados:');
-console.log('   1️⃣  09:00 - Manhã cedo');
-console.log('   2️⃣  11:00 - Meio da manhã');
-console.log('   3️⃣  13:00 - Início da tarde');
-console.log('   4️⃣  15:00 - Meio da tarde');
-console.log('   5️⃣  17:00 - Final da tarde');
-console.log('   6️⃣  19:00 - Início da noite');
-console.log('   7️⃣  21:00 - Meio da noite');
-console.log('   8️⃣  23:00 - Final da noite');
+horarios.forEach(({ label }) => console.log(`   ${label}`));
 console.log('');
 console.log('🌎 Timezone: America/Sao_Paulo (Horário de Brasília)');
 console.log('🎯 Estratégia: Cobrir todo o dia com ofertas diversificadas');
 console.log('🛡️  Garantia: Zero repetições nos últimos 100 produtos');
+console.log('🔒 Proteção: Execuções paralelas bloqueadas automaticamente');
 console.log('='.repeat(70));
 console.log('⏳ Aguardando próxima execução...\n');
 
@@ -147,5 +170,6 @@ if (process.argv.includes('--run-now')) {
 process.on('SIGINT', async () => {
     console.log('\n\n🛑 Encerrando scheduler...');
     await dedup.close();
+    console.log('🔒 Banco de dados fechado');
     process.exit(0);
 });
