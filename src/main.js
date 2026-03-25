@@ -18,7 +18,7 @@ const CuratorService = require('./core/use-cases/CuratorService');
 const SendProductsUseCase = require('./core/use-cases/SendProductsUseCase');
 
 // Importar scraper (será refatorado depois)
-const { scrapeGoldbox } = require('./pages/goldbox');
+const { scrapeGoldbox } = require('./pages/scraping-amazon');
 const { startBrowser } = require('./browser/browser');
 
 const logger = new Logger('Main');

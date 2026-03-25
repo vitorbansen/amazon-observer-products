@@ -1,7 +1,7 @@
 require('dotenv').config();
 
 const { startBrowser } = require('./browser/browser');
-const { scrapeGoldbox } = require('./pages/goldbox');
+const { scrapeGoldbox } = require('./pages/scraping-amazon');
 const { saveOffers } = require('./storage/storage');
 const { AmazonDealsBot } = require('./services/zapiService');
 const { DeduplicationService } = require('./services/deduplication');
