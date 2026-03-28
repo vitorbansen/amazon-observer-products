@@ -13,7 +13,7 @@ const CONFIG = {
     ML_AFFILIATE_TAG: process.env.ML_AFFILIATE_TAG || "",   // ex: "?matt_tool=XX&..."
     MIN_PRICE:        10,
     MAX_PRICE:        5000,
-    PRODUCTS_PER_RUN: 15,          // meta de ofertas por execução
+    PRODUCTS_PER_RUN: 4,          // meta de ofertas por execução
     MIN_DISCOUNT:     20,          // % mínimo para qualificar
     MIN_PRODUCT_SCORE: 0,
     // Rolar a página de ofertas para carregar mais cards
@@ -62,17 +62,19 @@ function calculateProductScore(product) {
 // 🔗 CONSTRUIR LINK DE AFILIADO (se configurado)
 // ─────────────────────────────────────────────
 function buildAffiliateLink(originalUrl) {
-    if (!CONFIG.ML_AFFILIATE_TAG || !originalUrl) return originalUrl;
+    const tag = process.env.ML_AFFILIATE_TAG;
+    if (!tag || !originalUrl) return originalUrl;
+
     try {
-        const url = new URL(originalUrl);
-        // Adiciona parâmetros de afiliado do Mercado Livre (ajuste conforme sua conta)
-        url.searchParams.set("matt_tool", CONFIG.ML_AFFILIATE_TAG);
-        return url.toString();
-    } catch (_) {
+        // Remove o fragmento #... que é tracking interno do ML e não agrega
+        const cleanUrl = originalUrl.split("#")[0];
+
+        // Formato correto do redirect de afiliado do ML
+        return `https://www.mercadolivre.com.br/social/${tag}?url=${encodeURIComponent(cleanUrl)}`;
+    } catch (err) {
         return originalUrl;
     }
 }
-
 // ─────────────────────────────────────────────
 // 📦 EXTRAIR CARDS DA PÁGINA DE OFERTAS
 // ─────────────────────────────────────────────
