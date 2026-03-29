@@ -289,8 +289,8 @@ async function scrapeGoldbox(page) {
         "(KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
     );
 
-    await page.goto(CONFIG.PAGE_URL, { waitUntil: "networkidle2", timeout: 60000 });
-    await new Promise(r => setTimeout(r, 3000));
+    await page.goto(CONFIG.PAGE_URL, { waitUntil: "networkidle2", timeout: 120000  });
+    await new Promise(r => setTimeout(r, 5000));
 
     console.log(`✅ Página carregada`);
 
