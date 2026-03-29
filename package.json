@@ -1,31 +1,39 @@
 {
   "name": "amazon-observer",
   "version": "1.0.0",
-  "description": "Amazon Deals Observer - Scraper automático de ofertas",
+  "description": "Amazon & Mercado Livre Deals Observer - Scraper automático de ofertas",
   "main": "src/observer.js",
   "scripts": {
     "start": "node src/observer.js",
     "observer": "node src/observer.js",
+
     "schedule": "node src/scheduler.js",
     "schedule:test": "node src/scheduler.js --run-now",
+    "schedule:test:ml": "node src/scheduler.js --run-now --ml",
+
+    "affiliate:test": "node src/pages/test-affiliate.js",
+
     "history": "node src/manage-history.js",
     "history:stats": "node src/manage-history.js stats",
     "history:list": "node src/manage-history.js list",
     "history:clear": "node src/manage-history.js clear",
-    "pm2:start": "pm2 start src/scheduler.js --name amazon-scheduler",
-    "pm2:start:observer": "pm2 start src/observer.js --name amazon-observer",
-    "pm2:stop": "pm2 stop amazon-scheduler",
-    "pm2:restart": "pm2 restart amazon-scheduler",
-    "pm2:logs": "pm2 logs amazon-scheduler",
+
+    "pm2:start": "pm2 start src/scheduler.js --name deals-scheduler",
+    "pm2:start:observer": "pm2 start src/observer.js --name deals-observer",
+    "pm2:stop": "pm2 stop deals-scheduler",
+    "pm2:restart": "pm2 restart deals-scheduler",
+    "pm2:logs": "pm2 logs deals-scheduler",
     "pm2:status": "pm2 status",
-    "pm2:delete": "pm2 delete amazon-scheduler"
+    "pm2:delete": "pm2 delete deals-scheduler"
   },
   "keywords": [
     "amazon",
+    "mercadolivre",
     "scraper",
     "deals",
     "observer",
-    "automation"
+    "automation",
+    "affiliate"
   ],
   "author": "",
   "license": "ISC",

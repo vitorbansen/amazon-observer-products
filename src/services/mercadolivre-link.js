@@ -203,9 +203,9 @@ async function generateAffiliateLinks(products) {
                 console.log("\n" + "=".repeat(70));
 
                 // ── 8. Screenshot do estado final ────────────────────────
-                const screenshotPath = path.resolve(__dirname, `../../debug-linkbuilder-lote${b + 1}.png`);
-                await page.screenshot({ path: screenshotPath, fullPage: true });
-                console.log(`📸 Print salvo: ${screenshotPath}`);
+                // const screenshotPath = path.resolve(__dirname, `../../debug-linkbuilder-lote${b + 1}.png`);
+                // await page.screenshot({ path: screenshotPath, fullPage: true });
+                // console.log(`📸 Print salvo: ${screenshotPath}`);
 
                 // ── 9. Salva cookies renovados ───────────────────────────
                 const updatedCookies = await page.cookies();
